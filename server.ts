@@ -1,10 +1,15 @@
 
+import "dotenv/config";
+import { config as dotenvConfig } from "dotenv";
+// Load .env.local overrides if present
+dotenvConfig({ path: ".env.local", override: true });
 import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import YAML from "yaml";
 import { GoogleGenAI } from "@google/genai";
+import jwt from "jsonwebtoken";
 import { AlertmanagerState, AlertmanagerConfig, Silence, Route, Receiver } from "./src/types.js";
 
 const app = express();
@@ -151,6 +156,19 @@ const DEFAULT_STATE: AlertmanagerState = {
   silences: [],
 };
 
+// Auth Configuration
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const JWT_SECRET = process.env.JWT_SECRET || (ADMIN_PASSWORD ? `am-configurer-${ADMIN_PASSWORD}` : "change-me");
+const AUTH_ENABLED = !!ADMIN_PASSWORD;
+
+function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!AUTH_ENABLED) return next();
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Authentication required" });
+  try { jwt.verify(header.slice(7), JWT_SECRET); next(); }
+  catch { res.status(401).json({ error: "Invalid or expired token" }); }
+}
+
 // AI Provider Configuration (from environment variables)
 // AI Copilot — set AI_ENABLED=true to activate
 const AI_ENABLED = process.env.AI_ENABLED === "true";
@@ -205,6 +223,27 @@ function saveState(state: AlertmanagerState) {
     console.error("Error saving config state to disk:", err);
   }
 }
+
+
+// API: Auth status
+app.get("/api/auth/status", (req, res) => {
+  let authenticated = !AUTH_ENABLED;
+  if (AUTH_ENABLED) {
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) {
+      try { jwt.verify(header.slice(7), JWT_SECRET); authenticated = true; } catch {}
+    }
+  }
+  res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { password } = req.body;
+  if (!AUTH_ENABLED) return res.json({ token: "", message: "Auth not configured" });
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: "Invalid password" });
+  const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
+  res.json({ token });
+});
 
 // API: Get Current Config State
 app.get("/api/config", (req, res) => {
@@ -469,7 +508,7 @@ app.post("/api/pull-config", async (req, res) => {
 });
 
 // API: Reload Configuration via Proxy POST /-/reload
-app.post("/api/reload", async (req, res) => {
+app.post("/api/reload", authMiddleware, async (req, res) => {
   const { targetUrl } = req.body;
   if (!targetUrl) {
     return res.status(400).json({ error: "targetUrl is required" });
@@ -515,6 +554,27 @@ app.post("/api/reload", async (req, res) => {
   }
 });
 
+// TARGET_URL for remote proxy
+const TARGET_URL = process.env.ALERTMANAGER_URL || "http://localhost:9093";
+
+async function proxyToAlertmanager(req: express.Request, res: express.Response, amPath: string) {
+  const targetUrl = req.body?.targetUrl || req.query.targetUrl as string || process.env.ALERTMANAGER_URL || "http://localhost:9093";
+  try {
+    const url = `${targetUrl.replace(/\/$/, "")}${amPath}`;
+    const fetchOpts: RequestInit = { method: req.method, headers: { "Content-Type": "application/json" } };
+    if (req.method !== "GET" && req.method !== "HEAD") fetchOpts.body = JSON.stringify(req.body);
+    const amRes = await fetch(url, fetchOpts);
+    const data = await amRes.json().catch(() => ({}));
+    res.status(amRes.status).json(data);
+  } catch (err: any) {
+    res.status(502).json({ error: `Failed to reach Alertmanager: ${err.message}` });
+  }
+}
+app.all("/api/remote/alerts",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/alerts"));
+app.all("/api/remote/silences", authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/silences"));
+app.all("/api/remote/silence/:id", authMiddleware, (req, res) => proxyToAlertmanager(req, res, `/api/v2/silence/${req.params.id}`));
+app.get("/api/remote/status",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/status"));
+
 // API: Get AI Copilot configuration (no secrets exposed)
 app.get("/api/ai/config", (_req, res) => {
   res.json({
@@ -525,7 +585,7 @@ app.get("/api/ai/config", (_req, res) => {
 });
 
 // API: AI Copilot - Suggest/Explain alertmanager settings
-app.post("/api/ai/suggest", async (req, res) => {
+app.post("/api/ai/suggest", authMiddleware, async (req, res) => {
   if (!AI_ENABLED) {
     return res.status(403).json({ error: "AI Copilot is not enabled. Set AI_ENABLED=true to activate." });
   }

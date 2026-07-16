@@ -272,5 +272,30 @@
       "inhibitRules": "Advanced Inhibit Rules Layout",
       "standardReceivers": "Clean standard multi-channel receivers"
     }
+  },
+  "remote": {
+    "alerts": "Alerts",
+    "silences": "Silences",
+    "status": "Status",
+    "loading": "Loading...",
+    "activeAlerts": "{{count}} active alert(s)",
+    "silenceCount": "{{count}} silence(s)",
+    "refresh": "Refresh",
+    "newSilence": "New Silence",
+    "failedFetch": "Failed to fetch",
+    "networkError": "Network error",
+    "noAlerts": "No active alerts",
+    "noSilences": "No active silences",
+    "noStatus": "No status data",
+    "clusterStatus": "Cluster Status",
+    "version": "Version",
+    "uptime": "Uptime",
+    "expire": "Expire",
+    "createdBy": "Created by",
+    "comment": "Comment",
+    "createSilence": "Create Silence",
+    "creating": "Creating...",
+    "addMatcher": "+ Add matcher",
+    "since": "Since"
   }
 }

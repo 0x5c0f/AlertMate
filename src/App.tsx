@@ -8,6 +8,7 @@ import InhibitRuleManager from './components/InhibitRuleManager';
 import SilenceManager from './components/SilenceManager';
 import ValidationAndReload from './components/ValidationAndReload';
 import AiCopilot from './components/AiCopilot';
+import RemoteManager from './components/RemoteManager';
 import {
   Settings,
   GitBranch,
@@ -24,13 +25,16 @@ import {
   Clock,
   Sun,
   Moon,
-  Languages
+  Languages,
+  KeyRound,
+  LogOut,
+  Satellite
 } from 'lucide-react';
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const [state, setState] = useState<AlertmanagerState | null>(null);
-  const [activeTab, setActiveTab] = useState<'receivers' | 'routes' | 'inhibit' | 'silences' | 'deploy' | 'copilot'>(() => {
+  const [activeTab, setActiveTab] = useState<'receivers' | 'routes' | 'inhibit' | 'silences' | 'deploy' | 'copilot' | 'remote'>(() => {
     return (localStorage.getItem('alertmanager-tab') as any) || 'receivers';
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -40,6 +44,13 @@ export default function App() {
     return (localStorage.getItem('alertmanager-theme') as 'dark' | 'light') || 'dark';
   });
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [alertCount, setAlertCount] = useState<number | null>(null);
 
   // Sync activeTab with localStorage
   useEffect(() => {
@@ -70,7 +81,64 @@ export default function App() {
     };
     fetchState();
     fetch('/api/ai/config').then(r => r.json()).then(c => setAiEnabled(c.enabled)).catch(() => {});
+    fetchAuthStatus();
   }, []);
+
+  const fetchAuthStatus = () => {
+    fetch('/api/auth/status', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('am-token') || ''}` }
+    })
+      .then(r => r.json())
+      .then(s => {
+        setAuthEnabled(s.authEnabled);
+        setAuthenticated(s.authenticated);
+        if (s.authenticated && s.authEnabled) setAiEnabled(s.aiEnabled);
+      })
+      .catch(() => {});
+  };
+
+  // Fetch alert count when authenticated and state is loaded
+  useEffect(() => {
+    if (authenticated && state) {
+      const url = state.targetAlertmanagerUrl?.replace(/\/$/, '') || 'http://localhost:9093';
+      fetch(`${url}/api/v2/alerts`)
+        .then(r => r.json())
+        .then(alerts => setAlertCount(Array.isArray(alerts) ? alerts.length : null))
+        .catch(() => setAlertCount(null));
+    } else {
+      setAlertCount(null);
+    }
+  }, [authenticated, state?.targetAlertmanagerUrl]);
+
+  const handleLogin = async () => {
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: loginPassword })
+      });
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem('am-token', data.token);
+        setLoginPassword('');
+        setShowLogin(false);
+        fetchAuthStatus();
+      } else {
+        setLoginError(data.error || 'Login failed');
+      }
+    } catch {
+      setLoginError('Network error');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('am-token');
+    fetchAuthStatus();
+  };
 
   // Save state to backend api
   const handleSaveState = async (stateToSave = state) => {
@@ -260,6 +328,12 @@ export default function App() {
               <span className="w-2 h-2 bg-amber-500 rounded-full" />
               <span>{t('app.routes')}: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{totalRoutes}</strong></span>
             </div>
+            {alertCount !== null && (
+            <div className={`flex items-center gap-1.5 pr-3 border-r ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span>Alerts: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{alertCount}</strong></span>
+            </div>
+            )}
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
               <span>{t('app.activeSilences')}: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{activeSilencesCount}</strong></span>
@@ -293,6 +367,35 @@ export default function App() {
             >
               <Languages className="w-4 h-4" />
             </button>
+
+            {/* Login/Logout */}
+            {authEnabled && (
+              authenticated ? (
+                <button
+                  onClick={handleLogout}
+                  className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400'
+                      : 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100 text-emerald-600'
+                  }`}
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowLogin(true)}
+                  className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-white/5 border-white/10 hover:bg-white/10 text-amber-400'
+                      : 'bg-gray-100 border-gray-200 hover:bg-gray-200 text-amber-600'
+                  }`}
+                  title="Login"
+                >
+                  <KeyRound className="w-4 h-4" />
+                </button>
+              )
+            )}
 
             {/* Theme Toggle Button */}
             <button
@@ -367,19 +470,6 @@ export default function App() {
             🚫 {t('app.tabs.inhibitRules')}
           </button>
           <button
-            onClick={() => setActiveTab('silences')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'silences'
-                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20 shadow-sm'
-                : theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent'
-            }`}
-          >
-            <VolumeX className="w-4 h-4" />
-            🔕 {t('app.tabs.silences')}
-          </button>
-          <button
             onClick={() => setActiveTab('deploy')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'deploy'
@@ -392,7 +482,22 @@ export default function App() {
             <FileCheck className="w-4 h-4" />
             ✅ {t('app.tabs.validateDeploy')}
           </button>
-          {aiEnabled && (
+          {authenticated && (
+          <button
+            onClick={() => setActiveTab('remote')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'remote'
+                ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20 shadow-sm'
+                : theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent'
+            }`}
+          >
+            <Satellite className="w-4 h-4" />
+            🛰 Remote Ops
+          </button>
+          )}
+          {aiEnabled && authenticated && (
           <button
             onClick={() => setActiveTab('copilot')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -433,19 +538,13 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'silences' && (
-            <SilenceManager
-              silences={state.silences}
-              onChange={handleSilencesChange}
-            />
-          )}
-
           {activeTab === 'deploy' && (
             <ValidationAndReload
               config={state.config}
               targetUrl={state.targetAlertmanagerUrl}
               onTargetUrlChange={handleTargetUrlChange}
               onPullConfig={handlePullConfig}
+              authenticated={authenticated}
             />
           )}
 
@@ -454,6 +553,10 @@ export default function App() {
               currentConfig={state.config}
               onApplySuggestions={handleApplyAiSuggestions}
             />
+          )}
+
+          {activeTab === 'remote' && authenticated && (
+            <RemoteManager targetUrl={state.targetAlertmanagerUrl} />
           )}
         </div>
       </main>
@@ -464,6 +567,36 @@ export default function App() {
           {t('app.footer')}
         </span>
       </footer>
+
+      {/* Login Modal */}
+      {showLogin && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLogin(false)} />
+          <div className="relative bg-white dark:bg-[#1a1a1e] rounded-xl shadow-2xl border border-gray-200 dark:border-white/10 w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-white/10">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Admin Login</h3>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                placeholder="Password"
+                autoFocus
+                className="w-full text-sm p-2.5 border border-gray-300 dark:border-white/20 rounded-lg bg-white dark:bg-white/5 outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {loginError && <p className="text-xs text-red-500">{loginError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/5">
+              <button onClick={() => setShowLogin(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5">Cancel</button>
+              <button onClick={handleLogin} disabled={loginLoading} className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">
+                {loginLoading ? 'Logging in...' : 'Login'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
