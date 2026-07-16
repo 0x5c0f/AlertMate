@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { InhibitRule } from '../types';
 import { Plus, Trash2, ShieldAlert, ArrowRight, HelpCircle, Layers, CheckCircle } from 'lucide-react';
 
@@ -9,6 +10,7 @@ interface InhibitRuleManagerProps {
 }
 
 export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRuleManagerProps) {
+  const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const handleAddRule = () => {
@@ -23,7 +25,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
   };
 
   const handleDeleteRule = (id: string) => {
-    if (confirm("Are you sure you want to delete this inhibit rule?")) {
+    if (confirm(t('inhibit.deleteConfirm'))) {
       onChange(inhibitRules.filter(r => r.id !== id));
       if (editingId === id) setEditingId(null);
     }
@@ -42,9 +44,9 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-gray-800">Inhibition Rules (Inhibit Rules)</h3>
+            <h3 className="text-sm font-bold text-gray-800">{t('inhibit.title')}</h3>
             <p className="text-xs text-gray-500 max-w-xl mt-1">
-              Inhibition rules prevent secondary alerts from triggering notifications if a primary alert is already firing. For example, if a machine is down (NodeDown), suppress all CPU/Memory alarms for that instance.
+              {t('inhibit.description')}
             </p>
           </div>
         </div>
@@ -53,7 +55,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
           className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shrink-0 self-start sm:self-center"
         >
           <Plus className="w-3.5 h-3.5" />
-          Add Inhibit Rule
+          {t('inhibit.addRule')}
         </button>
       </div>
 
@@ -61,8 +63,8 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
       {inhibitRules.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 border border-dashed border-gray-200 rounded-xl text-gray-400 bg-white">
           <Layers className="w-10 h-10 mb-2 text-gray-300" />
-          <span className="text-sm font-semibold">No inhibition rules configured</span>
-          <span className="text-xs text-gray-400 mt-1">Click "Add Inhibit Rule" above to suppress alert flooding.</span>
+          <span className="text-sm font-semibold">{t('inhibit.noRules')}</span>
+          <span className="text-xs text-gray-400 mt-1">{t('inhibit.noRulesHint')}</span>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -79,18 +81,18 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                 {/* Rule Header */}
                 <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-t-xl border-b border-gray-100">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-500 font-mono">RULE #{idx + 1}</span>
+                    <span className="text-xs font-bold text-gray-500 font-mono">{t('inhibit.ruleNumber', { n: idx + 1 })}</span>
                     <span className="text-xs text-gray-400">|</span>
                     <span className="text-xs font-medium text-gray-600">
-                      Suppress alerts matching{' '}
+                      {t('inhibit.suppress')}{' '}
                       <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-mono font-medium border border-red-100">
-                        Target Matchers
+                        {t('inhibit.targetMatchers')}
                       </span>{' '}
                       when{' '}
                       <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-mono font-medium border border-green-100">
-                        Source Alert
+                        {t('inhibit.sourceAlert')}
                       </span>{' '}
-                      fires
+                      {t('inhibit.fires')}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -102,12 +104,12 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                       }`}
                     >
-                      {isEditing ? 'Done Editing' : 'Edit Rule'}
+                      {isEditing ? t('inhibit.doneEditing') : t('inhibit.editRule')}
                     </button>
                     <button
                       onClick={() => handleDeleteRule(rule.id)}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-                      title="Delete Rule"
+                      title={t('inhibit.deleteRule')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -122,9 +124,9 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                            Source Alert Matchers (绿色)
+                            {t('inhibit.sourceMatchers', { color: '绿色' })}
                           </label>
-                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title="The primary alerting incident that triggers suppression (e.g. NodeDown)." />
+                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.source')} />
                         </div>
                         <input
                           type="text"
@@ -136,16 +138,16 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           placeholder='alertname="NodeDown"'
                           className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
                         />
-                        <span className="text-[10px] text-gray-400 mt-1 block">Comma-separated label list</span>
+                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.commaHint')}</span>
                       </div>
 
                       {/* Target Matchers */}
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                            Target Alert Matchers (红色)
+                            {t('inhibit.targetMatchersColored', { color: '红色' })}
                           </label>
-                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title="The alerts to suppress/silence (e.g. DiskUsageHigh, CPUUsageHigh)." />
+                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.target')} />
                         </div>
                         <input
                           type="text"
@@ -157,16 +159,16 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           placeholder='severity="critical"'
                           className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
                         />
-                        <span className="text-[10px] text-gray-400 mt-1 block">Secondary alerts to block</span>
+                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.secondaryHint')}</span>
                       </div>
 
                       {/* Equal Labels */}
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                            Matching Labels (Equal)
+                            {t('inhibit.matchingLabels')}
                           </label>
-                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title="Labels that must have equal values in both source and target alerts to trigger inhibition." />
+                          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.equal')} />
                         </div>
                         <input
                           type="text"
@@ -178,7 +180,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           placeholder="instance, node, env"
                           className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
                         />
-                        <span className="text-[10px] text-gray-400 mt-1 block">Checks equal values across tags</span>
+                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.labelCheck')}</span>
                       </div>
                     </div>
                   ) : (
@@ -186,7 +188,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                     <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-6 bg-gray-50/50 p-4 rounded-xl border border-gray-150">
                       {/* Source */}
                       <div className="flex-1 flex flex-col bg-white border border-green-100 rounded-lg p-3">
-                        <span className="text-[9px] font-bold text-green-600 uppercase mb-1.5">Primary Firing Alert</span>
+                        <span className="text-[9px] font-bold text-green-600 uppercase mb-1.5">{t('inhibit.primaryFiring')}</span>
                         <div className="flex flex-wrap gap-1">
                           {rule.source_matchers && rule.source_matchers.length > 0 ? (
                             rule.source_matchers.map((m, mIdx) => (
@@ -195,14 +197,14 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                               </span>
                             ))
                           ) : (
-                            <span className="text-xs text-gray-400 italic">No source criteria</span>
+                            <span className="text-xs text-gray-400 italic">{t('inhibit.noSourceCriteria')}</span>
                           )}
                         </div>
                       </div>
 
                       {/* Flow arrow */}
                       <div className="flex flex-col items-center justify-center text-gray-400 shrink-0">
-                        <span className="text-[9px] font-bold uppercase mb-1 text-gray-400">Blocks Notification</span>
+                        <span className="text-[9px] font-bold uppercase mb-1 text-gray-400">{t('inhibit.blocksNotification')}</span>
                         <div className="p-1.5 bg-white border border-gray-200 rounded-full shadow-sm">
                           <ArrowRight className="w-4 h-4 text-gray-400" />
                         </div>
@@ -210,7 +212,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
 
                       {/* Target */}
                       <div className="flex-1 flex flex-col bg-white border border-red-100 rounded-lg p-3">
-                        <span className="text-[9px] font-bold text-red-600 uppercase mb-1.5">Target Alerts (Inhibited)</span>
+                        <span className="text-[9px] font-bold text-red-600 uppercase mb-1.5">{t('inhibit.targetInhibited')}</span>
                         <div className="flex flex-wrap gap-1">
                           {rule.target_matchers && rule.target_matchers.length > 0 ? (
                             rule.target_matchers.map((m, mIdx) => (
@@ -219,14 +221,14 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                               </span>
                             ))
                           ) : (
-                            <span className="text-xs text-gray-400 italic">No target criteria</span>
+                            <span className="text-xs text-gray-400 italic">{t('inhibit.noTargetCriteria')}</span>
                           )}
                         </div>
                       </div>
 
                       {/* Equal constraints */}
                       <div className="md:w-48 flex flex-col justify-center bg-blue-50/30 border border-blue-100/50 rounded-lg p-3">
-                        <span className="text-[9px] font-bold text-blue-600 uppercase mb-1">If Label Values Equal</span>
+                        <span className="text-[9px] font-bold text-blue-600 uppercase mb-1">{t('inhibit.ifLabelEqual')}</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {rule.equal && rule.equal.length > 0 ? (
                             rule.equal.map((eq, eqIdx) => (
@@ -235,7 +237,7 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                               </span>
                             ))
                           ) : (
-                            <span className="text-xs text-gray-400 italic">Unconditional block</span>
+                            <span className="text-xs text-gray-400 italic">{t('inhibit.unconditionalBlock')}</span>
                           )}
                         </div>
                       </div>

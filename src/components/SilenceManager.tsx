@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Silence, Matcher } from '../types';
 import { Plus, Trash2, Calendar, User, MessageSquare, AlertTriangle, Eye, EyeOff, Search, Clock, CheckCircle2, PlayCircle, XCircle } from 'lucide-react';
 
@@ -9,6 +10,7 @@ interface SilenceManagerProps {
 }
 
 export default function SilenceManager({ silences, onChange }: SilenceManagerProps) {
+  const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -36,14 +38,14 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
   const handleCreateSilence = (e: React.FormEvent) => {
     e.preventDefault();
     if (!creator.trim() || !comment.trim()) {
-      alert("Please fill in Creator and Comment details.");
+      alert(t('silences.validation_fillRequired'));
       return;
     }
 
     // Check if any matchers are empty
     const invalidMatcher = newMatchers.some(m => !m.label.trim() || !m.value.trim());
     if (invalidMatcher) {
-      alert("All matchers must have non-empty label name and value.");
+      alert(t('silences.validation_matchersNonEmpty'));
       return;
     }
 
@@ -75,7 +77,7 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
   };
 
   const handleExpireSilence = (id: string) => {
-    if (confirm("Are you sure you want to expire/remove this silence immediately? Alerts matching these labels will start alerting.")) {
+    if (confirm(t('silences.expireConfirm'))) {
       // We can set end date to now
       const updated = silences.map(sil => {
         if (sil.id === id) {
@@ -117,7 +119,7 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search silences (by author, comment, labels)..."
+            placeholder={t('silences.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full text-xs pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white"
@@ -131,7 +133,7 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
               : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}
         >
-          {isAdding ? 'Cancel' : <><Plus className="w-3.5 h-3.5" /> Create Silence</>}
+          {isAdding ? t('common.cancel') : <><Plus className="w-3.5 h-3.5" /> {t('silences.scheduleNew')}</>}
         </button>
       </div>
 
@@ -140,12 +142,12 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
         <form onSubmit={handleCreateSilence} className="bg-white border border-blue-200 rounded-xl p-5 shadow-sm space-y-4">
           <div className="text-xs font-bold text-gray-800 uppercase tracking-wider pb-2 border-b border-gray-100 flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-blue-500" />
-            Schedule New Silence Period
+            {t('silences.scheduleNew')}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">Created By (On-Call Role / User)</label>
+              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">{t('silences.createdBy')}</label>
               <div className="relative">
                 <User className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
                 <input
@@ -160,24 +162,24 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">Silence Duration</label>
+              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">{t('silences.duration')}</label>
               <select
                 value={durationHours}
                 onChange={(e) => setDurationHours(e.target.value)}
                 className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white h-9"
               >
-                <option value="0.5">30 minutes</option>
-                <option value="1">1 hour</option>
-                <option value="2">2 hours (Standard)</option>
-                <option value="4">4 hours</option>
-                <option value="8">8 hours</option>
-                <option value="24">24 hours (1 day)</option>
-                <option value="168">7 days (1 week)</option>
+                <option value="0.5">{t('silences.duration_30m')}</option>
+                <option value="1">{t('silences.duration_1h')}</option>
+                <option value="2">{t('silences.duration_2h')}</option>
+                <option value="4">{t('silences.duration_4h')}</option>
+                <option value="8">{t('silences.duration_8h')}</option>
+                <option value="24">{t('silences.duration_24h')}</option>
+                <option value="168">{t('silences.duration_7d')}</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">Comment (Reason for silence)</label>
+              <label className="block text-[11px] font-semibold text-gray-600 mb-1.5">{t('silences.comment')}</label>
               <div className="relative">
                 <MessageSquare className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
                 <input
@@ -195,13 +197,13 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
           {/* Matchers Subform */}
           <div className="bg-gray-50 p-4 border border-gray-200 rounded-lg space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">Target Alert Matchers</span>
+              <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">{t('silences.targetMatchers')}</span>
               <button
                 type="button"
                 onClick={handleAddMatcherRow}
                 className="text-[10px] text-blue-600 hover:text-blue-700 font-bold"
               >
-                + Add Matcher Label
+                {t('silences.addMatcher')}
               </button>
             </div>
 
@@ -249,13 +251,13 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
               onClick={() => setIsAdding(false)}
               className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
             >
-              Add Active Silence
+              {t('silences.addSilence')}
             </button>
           </div>
         </form>
@@ -266,8 +268,8 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
         {filteredSilences.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 border border-dashed border-gray-200 rounded-xl text-gray-400 bg-white">
             <Clock className="w-10 h-10 mb-2 text-gray-300" />
-            <span className="text-sm font-semibold">No silences found</span>
-            <span className="text-xs text-gray-400 mt-1">No active silencing filters matching current criteria.</span>
+            <span className="text-sm font-semibold">{t('silences.noSilences')}</span>
+            <span className="text-xs text-gray-400 mt-1">{t('silences.noSilencesHint')}</span>
           </div>
         ) : (
           filteredSilences.map((sil) => {
@@ -292,23 +294,23 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
                       {status === 'active' && (
                         <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-bold">
                           <PlayCircle className="w-3 h-3" />
-                          ACTIVE
+                          {t('silences.status_active')}
                         </span>
                       )}
                       {status === 'pending' && (
                         <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-bold">
                           <Clock className="w-3 h-3" />
-                          PENDING
+                          {t('silences.status_pending')}
                         </span>
                       )}
                       {status === 'expired' && (
                         <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full text-[10px] font-bold">
                           <XCircle className="w-3 h-3" />
-                          EXPIRED
+                          {t('silences.status_expired')}
                         </span>
                       )}
 
-                      <span className="text-xs text-gray-400">ID: <span className="font-mono text-gray-500 select-all">{sil.id}</span></span>
+                      <span className="text-xs text-gray-400">{t('silences.id')} <span className="font-mono text-gray-500 select-all">{sil.id}</span></span>
                       <span className="text-xs text-gray-400">•</span>
                       <span className="text-xs font-semibold text-gray-600 flex items-center gap-1">
                         <User className="w-3 h-3 text-gray-400" />
@@ -341,11 +343,11 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
                     <div className="text-right space-y-1 text-[11px] text-gray-500">
                       <div className="flex items-center sm:justify-end gap-1.5">
                         <Calendar className="w-3 h-3 text-gray-400" />
-                        <span>Start: {new Date(sil.startsAt).toLocaleString()}</span>
+                        <span>{t('silences.start')} {new Date(sil.startsAt).toLocaleString()}</span>
                       </div>
                       <div className="flex items-center sm:justify-end gap-1.5">
                         <Clock className="w-3 h-3 text-gray-400" />
-                        <span>End: {new Date(sil.endsAt).toLocaleString()}</span>
+                        <span>{t('silences.end')} {new Date(sil.endsAt).toLocaleString()}</span>
                       </div>
                     </div>
 
@@ -355,7 +357,7 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
                         className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors bg-white shadow-sm"
                       >
                         <Trash2 className="w-3 h-3" />
-                        Expire Silence
+                        {t('silences.expireSilence')}
                       </button>
                     )}
                   </div>

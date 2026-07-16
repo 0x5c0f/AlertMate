@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Route, Receiver } from '../types';
 import { Plus, Trash2, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Settings, GitBranch, AlertCircle, RefreshCw, HelpCircle } from 'lucide-react';
 
@@ -12,6 +13,7 @@ interface RouteManagerProps {
 export default function RouteManager({ route, receivers, onChange }: RouteManagerProps) {
   const [selectedRouteId, setSelectedRouteId] = useState<string>('root');
   const [collapsedRoutes, setCollapsedRoutes] = useState<Record<string, boolean>>({});
+  const { t } = useTranslation();
 
   // Flatten helper to easily navigate and find routes by ID
   const findRouteAndParent = (
@@ -95,11 +97,11 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
   const handleDeleteRoute = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (id === 'root') {
-      alert("Cannot delete the root route.");
+      alert(t('routes.deleteRootWarning'));
       return;
     }
 
-    if (confirm("Are you sure you want to delete this route and all its sub-routes?")) {
+    if (confirm(t('routes.deleteConfirm'))) {
       const deepDelete = (current: Route): Route => {
         if (current.routes) {
           const filtered = current.routes.filter(r => r.id !== id);
@@ -304,7 +306,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
             
             <div className="flex flex-col truncate">
               <span className="text-[11px] font-bold tracking-tight text-gray-800 uppercase">
-                {isRoot ? 'Root Route' : `Route #${index + 1}`}
+                {isRoot ? t('routes.rootRoute') : t('routes.routeNumber', { n: index + 1 })}
               </span>
               <div className="flex items-center gap-1.5 text-[10px] text-gray-500 truncate font-normal">
                 {!isRoot && node.matchers && node.matchers.length > 0 ? (
@@ -312,7 +314,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                     {node.matchers.join(', ')}
                   </span>
                 ) : !isRoot ? (
-                  <span className="text-gray-400 italic">No Matchers</span>
+                  <span className="text-gray-400 italic">{t('routes.noMatchers')}</span>
                 ) : null}
                 
                 <span className="text-[10px] text-gray-400">→</span>
@@ -322,7 +324,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                 
                 {node.continue && (
                   <span className="bg-teal-50 text-teal-700 px-1 py-0.2 rounded text-[9px] font-medium border border-teal-100">
-                    continue
+                    {t('routes.continueFlag')}
                   </span>
                 )}
               </div>
@@ -337,7 +339,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleMoveRoute(node.id, 'up'); }}
                   className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
-                  title="Move Up"
+                  title={t('routes.tooltips.moveUp')}
                 >
                   <ArrowUp className="w-3 h-3" />
                 </button>
@@ -345,7 +347,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleMoveRoute(node.id, 'down'); }}
                   className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
-                  title="Move Down"
+                  title={t('routes.tooltips.moveDown')}
                 >
                   <ArrowDown className="w-3 h-3" />
                 </button>
@@ -354,7 +356,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                     type="button"
                     onClick={(e) => { e.stopPropagation(); handleOutdentRoute(node.id); }}
                     className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded text-[9px] font-bold"
-                    title="Outdent (Move left)"
+                    title={t('routes.tooltips.outdent')}
                   >
                     ←
                   </button>
@@ -364,7 +366,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                     type="button"
                     onClick={(e) => { e.stopPropagation(); handleIndentRoute(node.id); }}
                     className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded text-[9px] font-bold"
-                    title="Indent (Move right)"
+                    title={t('routes.tooltips.indent')}
                   >
                     →
                   </button>
@@ -375,7 +377,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               type="button"
               onClick={(e) => { e.stopPropagation(); handleAddSubRoute(node.id); }}
               className="p-1 text-blue-500 hover:bg-blue-50 rounded"
-              title="Add Sub-Route"
+              title={t('routes.tooltips.addSubRoute')}
             >
               <Plus className="w-3 h-3" />
             </button>
@@ -384,7 +386,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                 type="button"
                 onClick={(e) => handleDeleteRoute(node.id, e)}
                 className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
-                title="Delete Route"
+                title={t('routes.tooltips.deleteRoute')}
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -410,7 +412,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
     let linksResult: any[] = [];
 
     // Current node summary representation
-    const label = node.id === 'root' ? 'Root (Default)' : node.matchers?.join(', ') || 'Matcher';
+    const label = node.id === 'root' ? t('routes.chart.root') : node.matchers?.join(', ') || t('routes.chart.matcher');
     nodesResult.push({
       id: node.id,
       x,
@@ -459,10 +461,10 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
           <span className="font-semibold text-gray-800 text-sm flex items-center gap-1.5">
             <GitBranch className="w-4 h-4 text-gray-500" />
-            Route Hierarchy
+            {t('routes.title')}
           </span>
           <div className="text-[10px] text-gray-400">
-            Click node to edit configuration
+            {t('routes.clickToEdit')}
           </div>
         </div>
 
@@ -479,14 +481,14 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
             <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
               <Settings className="w-4 h-4 text-blue-500" />
               <span className="font-semibold text-gray-800 text-xs uppercase tracking-wider">
-                Editing Route: {activeRoute.id === 'root' ? 'ROOT DEFAULT' : activeRoute.id}
+                {t('routes.editingRoute', { name: activeRoute.id === 'root' ? t('routes.rootDefault') : activeRoute.id })}
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Receiver dropdown */}
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Target Receiver</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.targetReceiver')}</label>
                 <select
                   value={activeRoute.receiver}
                   onChange={(e) => handleUpdateActiveRoute({ receiver: e.target.value })}
@@ -502,8 +504,8 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               {activeRoute.id !== 'root' && (
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[11px] font-medium text-gray-600">Matchers List</label>
-                    <span className="text-[9px] text-gray-400 font-mono">Format: label="value"</span>
+                    <label className="block text-[11px] font-medium text-gray-600">{t('routes.matchersList')}</label>
+                    <span className="text-[9px] text-gray-400 font-mono">{t('routes.matcherFormat')}</span>
                   </div>
                   <input
                     type="text"
@@ -528,8 +530,8 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                       onChange={(e) => handleUpdateActiveRoute({ continue: e.target.checked })}
                       className="rounded text-blue-600 border-gray-300 focus:ring-blue-500 mr-2"
                     />
-                    Continue Alert Matching
-                    <HelpCircle className="w-3.5 h-3.5 text-gray-400 ml-1 inline" title="If enabled, alerts continue matching further sibling branches too." />
+                    {t('routes.continueMatching')}
+                    <HelpCircle className="w-3.5 h-3.5 text-gray-400 ml-1 inline" title={t('routes.continueHint')} />
                   </label>
                 </div>
               )}
@@ -537,7 +539,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               {/* Root route parameters */}
               {activeRoute.id === 'root' && (
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Group By Labels</label>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupBy')}</label>
                   <input
                     type="text"
                     value={activeRoute.group_by?.join(', ') || ''}
@@ -553,7 +555,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
 
               {/* Timing parameters */}
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Group Wait</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupWait')}</label>
                 <input
                   type="text"
                   value={activeRoute.group_wait || ''}
@@ -564,7 +566,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Group Interval</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupInterval')}</label>
                 <input
                   type="text"
                   value={activeRoute.group_interval || ''}
@@ -575,7 +577,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Repeat Interval</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.repeatInterval')}</label>
                 <input
                   type="text"
                   value={activeRoute.repeat_interval || ''}
@@ -588,7 +590,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-xl p-5 text-center text-xs text-gray-400">
-            Select a route node to configure its routing parameters.
+            {t('routes.selectHint')}
           </div>
         )}
 
@@ -597,10 +599,10 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
           <div className="p-3 border-b border-gray-200 bg-white flex items-center justify-between">
             <span className="text-[11px] font-bold tracking-tight text-gray-600 uppercase flex items-center gap-1">
               <GitBranch className="w-3.5 h-3.5 text-blue-500" />
-              Live Routing Tree Flowchart
+              {t('routes.livePreview')}
             </span>
             <span className="text-[9px] text-gray-400 font-mono">
-              Visualizes how alerts propagate and hit notification groups
+              {t('routes.livePreviewHint')}
             </span>
           </div>
 
@@ -651,7 +653,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
 
                     {/* Continuation indicator */}
                     {node.continue && (
-                      <circle cx={170} cy={25} r={5} fill="#14b8a6" title="Continue Flag Enabled" />
+                      <circle cx={170} cy={25} r={5} fill="#14b8a6" title={t('routes.tooltips.continueEnabled')} />
                     )}
 
                     {/* Text values */}
@@ -660,7 +662,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                       y={18}
                       className={`text-[10px] font-bold ${node.isRoot ? 'fill-blue-600' : 'fill-gray-800'}`}
                     >
-                      {node.isRoot ? 'ROOT DEFAULT' : node.label.length > 25 ? `${node.label.substring(0, 25)}...` : node.label}
+                      {node.isRoot ? t('routes.rootDefault') : node.label.length > 25 ? `${node.label.substring(0, 25)}...` : node.label}
                     </text>
 
                     <text
@@ -668,7 +670,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                       y={36}
                       className="text-[9px] fill-gray-400 font-mono"
                     >
-                      Target: {node.receiver}
+                      {t('routes.chart.target')}: {node.receiver}
                     </text>
                   </g>
                 );
