@@ -184,7 +184,7 @@ const AI_ENABLED = process.env.AI_ENABLED === "true";
 const AI_PROVIDER = process.env.AI_PROVIDER || "gemini";
 const AI_BASE_URL = process.env.AI_BASE_URL || "";
 const AI_API_KEY = process.env.AI_API_KEY || "";
-const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-3.5-flash");
+const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-2.5-flash");
 
 // Validate AI config at startup if enabled
 if (AI_ENABLED && !AI_API_KEY) {
@@ -229,6 +229,35 @@ app.get("/api/config", (req, res) => {
     });
     res.json(clean);
   } else { res.json(DEFAULT_STATE); }
+});
+
+// API: Parse raw Alertmanager YAML to internal format (no outbound requests)
+app.post("/api/parse-yaml", (req, res) => {
+  try {
+    const { yaml: yamlStr } = req.body;
+    if (!yamlStr) return res.status(400).json({ error: "yaml field is required" });
+    const parsed = YAML.parse(yamlStr);
+    const stripSecrets = (obj: any): any => {
+      if (typeof obj === "string") return obj === "<secret>" ? "" : obj;
+      if (Array.isArray(obj)) return obj.map(stripSecrets);
+      if (typeof obj === "object" && obj) { const r: any = {}; for (const k of Object.keys(obj)) r[k] = stripSecrets(obj[k]); return r; }
+      return obj;
+    };
+    const cleaned = stripSecrets(parsed);
+    let recIdx = 1, routeIdx = 1;
+    const receivers = (cleaned.receivers || []).map((r: any) => ({ id: `rec-${recIdx++}`, ...r }));
+    const addRouteIds = (r: any): Route => {
+      const result: Route = { id: routeIdx++ === 1 ? "root" : `route-${routeIdx - 1}`, ...r };
+      if (result.routes) result.routes = result.routes.map(addRouteIds);
+      return result;
+    };
+    const route = cleaned.route ? addRouteIds(cleaned.route) : { id: "root", receiver: (receivers[0]?.name || "default") };
+    const inhibit_rules = (cleaned.inhibit_rules || []).map((r: any, i: number) => ({ id: `inhibit-${i + 1}`, ...r }));
+    const config: any = { global: cleaned.global || {}, route, receivers };
+    if (inhibit_rules.length > 0) config.inhibit_rules = inhibit_rules;
+    if (cleaned.templates) config.templates = cleaned.templates;
+    res.json({ config });
+  } catch (err: any) { res.json({ error: `YAML parse error: ${err.message}` }); }
 });
 
 // API: Validate Alertmanager YAML Configuration
@@ -362,181 +391,7 @@ app.post("/api/validate", (req, res) => {
   }
 });
 
-// Helper: recursively strip <secret> placeholders from parsed Alertmanager config
-function stripSecrets(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === "string") {
-    return obj === "<secret>" ? "" : obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(stripSecrets);
-  }
-  if (typeof obj === "object") {
-    const result: any = {};
-    for (const key of Object.keys(obj)) {
-      result[key] = stripSecrets(obj[key]);
-    }
-    return result;
-  }
-  return obj;
-}
-
-// Helper: convert Alertmanager standard YAML config to internal format with IDs
-function convertAmConfigToInternal(rawConfig: any): AlertmanagerConfig {
-  // Strip <secret> placeholders first
-  const cleaned = stripSecrets(rawConfig);
-  
-  let recIdx = 1;
-  let routeIdx = 1;
-
-  // Add IDs to receivers
-  const receivers: Receiver[] = (cleaned.receivers || []).map((r: any) => ({
-    id: `rec-${recIdx++}`,
-    ...r,
-  }));
-
-  // Add IDs to routes recursively
-  function addRouteIds(route: any): Route {
-    const result: Route = {
-      id: routeIdx++ === 1 ? "root" : `route-${routeIdx - 1}`,
-      ...route,
-    };
-    if (result.routes) {
-      result.routes = result.routes.map(addRouteIds);
-    }
-    return result;
-  }
-
-  const route = cleaned.route ? addRouteIds(cleaned.route) : undefined;
-
-  // Add IDs to inhibit rules
-  const inhibit_rules = (cleaned.inhibit_rules || []).map((r: any, i: number) => ({
-    id: `inhibit-${i + 1}`,
-    ...r,
-  }));
-
-  return {
-    global: cleaned.global || {},
-    route: route || { id: "root", receiver: (receivers[0]?.name || "default") },
-    receivers,
-    ...(inhibit_rules.length > 0 ? { inhibit_rules } : {}),
-    ...(cleaned.templates ? { templates: cleaned.templates } : {}),
-  };
-}
-
-// API: Pull config from a running Alertmanager instance
-app.post("/api/pull-config", async (req, res) => {
-  const targetUrl = req.body?.targetUrl || process.env.ALERTMANAGER_URL || "http://localhost:9093";
-
-  const statusUrl = `${targetUrl.replace(/\/$/, "")}/api/v2/status`;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const statusRes = await fetch(statusUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (!statusRes.ok) {
-      return res.status(502).json({
-        error: `Alertmanager returned HTTP ${statusRes.status}. Ensure the target is a running Alertmanager instance.`
-      });
-    }
-
-    const statusData = await statusRes.json();
-    const rawYaml = statusData?.config?.original;
-
-    if (!rawYaml) {
-      return res.status(502).json({
-        error: "Alertmanager returned status but no config.original field was found."
-      });
-    }
-
-    // Parse YAML to JSON
-    const parsed = YAML.parse(rawYaml);
-
-    // Convert to internal format with IDs
-    const internalConfig = convertAmConfigToInternal(parsed);
-
-    res.json({
-      success: true,
-      config: internalConfig,
-      message: `Successfully pulled configuration from Alertmanager at ${targetUrl}.`
-    });
-  } catch (err: any) {
-    let errorMsg = err.message || "Unknown Error";
-    if (err.name === "AbortError") {
-      errorMsg = "Connection timed out (Alertmanager did not respond in 5 seconds)";
-    }
-    res.status(502).json({
-      error: `Failed to reach Alertmanager at ${targetUrl}: ${errorMsg}. Please ensure Alertmanager is running and accessible.`
-    });
-  }
-});
-
-// API: Reload Configuration via Proxy POST /-/reload
-app.post("/api/reload", authMiddleware, async (req, res) => {
-  const targetUrl = req.body?.targetUrl || process.env.ALERTMANAGER_URL || "http://localhost:9093";
-
-  const reloadUrl = `${targetUrl.replace(/\/$/, "")}/-/reload`;
-  console.log(`Proxying Alertmanager configuration reload to: ${reloadUrl}`);
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds timeout
-
-    const reloadRes = await fetch(reloadUrl, {
-      method: "POST",
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    if (reloadRes.ok) {
-      res.json({
-        success: true,
-        status: reloadRes.status,
-        message: `Successfully called /-/reload on Alertmanager at ${targetUrl}. Configuration has been hot-reloaded.`
-      });
-    } else {
-      const text = await reloadRes.text();
-      res.status(502).json({
-        success: false,
-        status: reloadRes.status,
-        message: `Failed to reload. Alertmanager returned status ${reloadRes.status}: ${text}`
-      });
-    }
-  } catch (err: any) {
-    let errorMsg = err.message || "Unknown Connection Error";
-    if (err.name === "AbortError") {
-      errorMsg = "Connection timed out (Alertmanager did not respond in 5 seconds)";
-    }
-    res.status(502).json({
-      success: false,
-      message: `Failed to reach Alertmanager at ${reloadUrl}: ${errorMsg}. Please ensure Alertmanager is running, accessible, and hot-reload is enabled (flag --web.enable-lifecycle).`
-    });
-  }
-});
-
-async function proxyToAlertmanager(req: express.Request, res: express.Response, amPath: string) {
-  const targetUrl = req.body?.targetUrl || req.query.targetUrl as string || process.env.ALERTMANAGER_URL || "http://localhost:9093";
-  try {
-    const url = `${targetUrl.replace(/\/$/, "")}${amPath}`;
-    const fetchOpts: RequestInit = { method: req.method, headers: { "Content-Type": "application/json" } };
-    if (req.method !== "GET" && req.method !== "HEAD") fetchOpts.body = JSON.stringify(req.body);
-    const amRes = await fetch(url, fetchOpts);
-    const data = await amRes.json().catch(() => ({}));
-    res.status(amRes.status).json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `Failed to reach Alertmanager: ${err.message}` });
-  }
-}
-app.all("/api/remote/alerts",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/alerts"));
-app.all("/api/remote/silences", authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/silences"));
-app.all("/api/remote/silence/:id", authMiddleware, (req, res) => proxyToAlertmanager(req, res, `/api/v2/silence/${req.params.id}`));
-app.get("/api/remote/status",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/status"));
-
-// API: Get AI Copilot configuration (no secrets exposed)
+// API: Validate Alertmanager YAML Configuration
 app.get("/api/ai/config", (_req, res) => {
   res.json({
     enabled: AI_ENABLED,

@@ -35,28 +35,27 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
     timestamp: string;
   } | null>(null);
 
-  // Function to pull config from Alertmanager
+  // Pull config: browser fetches YAML from Alertmanager, server parses to internal format
   const handlePullConfig = async () => {
     if (!targetUrl.trim()) return;
     setIsPulling(true);
     setPullError(null);
     try {
-      const res = await fetch('/api/pull-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUrl })
-      });
+      const statusUrl = `${targetUrl.replace(/\/$/, '')}/api/v2/status`;
+      const res = await fetch(statusUrl);
+      if (!res.ok) { setPullError(`Alertmanager returned HTTP ${res.status}`); return; }
       const data = await res.json();
-      if (data.success && data.config) {
-        onPullConfig(data.config);
-      } else {
-        setPullError(data.error || 'Unknown error pulling configuration.');
-      }
-    } catch (err: any) {
-      setPullError(err.message || 'Network error pulling configuration.');
-    } finally {
-      setIsPulling(false);
-    }
+      const rawYaml = data?.config?.original;
+      if (!rawYaml) { setPullError('No config.original in status response'); return; }
+      const parseRes = await fetch('/api/parse-yaml', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yaml: rawYaml })
+      });
+      const parsed = await parseRes.json();
+      if (parsed.config) onPullConfig(parsed.config);
+      else setPullError(parsed.error || 'Failed to parse config');
+    } catch (err: any) { setPullError(err.message || 'Network error'); }
+    finally { setIsPulling(false); }
   };
 
   // Function to call `/api/validate`
@@ -88,20 +87,16 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
     handleValidateConfig();
   }, [config]);
 
-  // Function to call `/api/reload`
+  // Function to reload Alertmanager (direct browser call)
   const handleReloadConfig = async () => {
     setIsReloading(true);
     setReloadLog(null);
     try {
-      const res = await fetch('/api/reload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUrl })
-      });
-      const data = await res.json();
+      const reloadUrl = `${targetUrl.replace(/\/$/, '')}/-/reload`;
+      const res = await fetch(reloadUrl, { method: 'POST' });
       setReloadLog({
-        success: data.success,
-        message: data.message,
+        success: res.ok,
+        message: res.ok ? 'Configuration hot-reloaded successfully' : `HTTP ${res.status}`,
         timestamp: new Date().toLocaleTimeString()
       });
     } catch (err: any) {

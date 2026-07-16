@@ -10,3 +10,4 @@ coverage/
 reasonix.toml
 data/
 .qoder/
+.reasonix/
