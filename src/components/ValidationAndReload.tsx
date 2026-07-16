@@ -9,9 +9,10 @@ interface ValidationAndReloadProps {
   targetUrl: string;
   onTargetUrlChange: (url: string) => void;
   onPullConfig: (config: AlertmanagerConfig) => void;
+  authenticated?: boolean;
 }
 
-export default function ValidationAndReload({ config, targetUrl, onTargetUrlChange, onPullConfig }: ValidationAndReloadProps) {
+export default function ValidationAndReload({ config, targetUrl, onTargetUrlChange, onPullConfig, authenticated }: ValidationAndReloadProps) {
   const { t } = useTranslation();
   const [isValidating, setIsValidating] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
@@ -174,6 +175,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
               <Download className="w-4 h-4" />
               {t('deploy.download')}
             </button>
+            {authenticated && (
             <button
               onClick={handleReloadConfig}
               disabled={isReloading || !validationResult?.valid}
@@ -186,6 +188,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
               )}
               {t('deploy.reload')}
             </button>
+            )}
           </div>
         </div>
 
