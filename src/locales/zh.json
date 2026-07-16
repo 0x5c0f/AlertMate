@@ -10,6 +10,8 @@
     "retry": "重试",
     "remove": "移除",
     "confirm": "确认",
+    "ok": "确定",
+    "warning": "警告",
     "search": "搜索",
     "loading": "加载中...",
     "saving": "保存中...",

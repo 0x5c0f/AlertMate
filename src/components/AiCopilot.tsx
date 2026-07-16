@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertmanagerConfig, Receiver, Route, InhibitRule } from '../types';
 import { Sparkles, ArrowRight, CheckCircle2, AlertTriangle, RefreshCw, MessageSquare, List, Play, Compass } from 'lucide-react';
@@ -18,14 +18,19 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('alertmanager-copilot-model') || 'gemini-3.5-flash';
-  });
-  const [customModelInput, setCustomModelInput] = useState<string>(() => {
-    return localStorage.getItem('alertmanager-copilot-custom-model') || '';
-  });
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [aiProvider, setAiProvider] = useState<string>('gemini');
 
   // Suggested Result from API
+  useEffect(() => {
+    fetch('/api/ai/config')
+      .then(r => r.json())
+      .then(cfg => {
+        setAiProvider(cfg.provider);
+        setSelectedModel(cfg.model);
+      })
+      .catch(() => {});
+  }, []);
   const [suggestion, setSuggestion] = useState<{
     explanation: string;
     suggestedConfig: {
@@ -63,7 +68,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
     setSuggestion(null);
     setApplied(false);
 
-    const modelToUse = selectedModel === 'custom' ? customModelInput.trim() : selectedModel;
+    const modelToUse = selectedModel;
 
     try {
       const res = await fetch('/api/ai/suggest', {
@@ -72,7 +77,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
         body: JSON.stringify({
           prompt: textToSend,
           currentConfig,
-          model: modelToUse || undefined
+          model: modelToUse || undefined,
         })
       });
 
@@ -113,38 +118,16 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
             {t('copilot.promptPlaceholder')}
           </p>
 
-          {/* Model Configuration Selector */}
+          {/* Model Selection (configured via server environment) */}
           <div className="p-3.5 bg-gray-50/50 rounded-lg border border-gray-100 space-y-2.5">
-            <label className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-purple-600 uppercase tracking-wider block">
               🤖 {t('copilot.modelSelection')}
             </label>
-            <div className="flex gap-2">
-              <select
-                value={selectedModel}
-                onChange={(e) => {
-                  setSelectedModel(e.target.value);
-                  localStorage.setItem('alertmanager-copilot-model', e.target.value);
-                }}
-                className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white"
-              >
-                <option value="gemini-3.5-flash">{t('copilot.models.gemini3flash')}</option>
-                <option value="gemini-2.5-flash">{t('copilot.models.gemini2flash')}</option>
-                <option value="gemini-2.5-pro">{t('copilot.models.gemini2pro')}</option>
-                <option value="custom">{t('copilot.models.custom')}</option>
-              </select>
+            <div className="text-[10px] text-gray-400">
+              Provider: <span className="font-mono text-gray-600">{aiProvider === 'custom' ? 'Custom API' : 'Google Gemini'}</span>
+              <span className="mx-1.5 text-gray-300">|</span>
+              Model: <span className="font-mono text-gray-600">{selectedModel}</span>
             </div>
-            {selectedModel === 'custom' && (
-              <input
-                type="text"
-                value={customModelInput}
-                onChange={(e) => {
-                  setCustomModelInput(e.target.value);
-                  localStorage.setItem('alertmanager-copilot-custom-model', e.target.value);
-                }}
-                placeholder="e.g., gemini-2.0-flash"
-                className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white placeholder-gray-400 font-mono"
-              />
-            )}
           </div>
 
           {/* Quick suggestions templates */}

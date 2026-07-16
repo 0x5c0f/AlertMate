@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InhibitRule } from '../types';
-import { Plus, Trash2, ShieldAlert, ArrowRight, HelpCircle, Layers, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, ShieldAlert, ArrowRight, HelpCircle, Layers, CheckCircle, X } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface InhibitRuleManagerProps {
   inhibitRules: InhibitRule[];
@@ -12,6 +13,7 @@ interface InhibitRuleManagerProps {
 export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRuleManagerProps) {
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleAddRule = () => {
     const newRule: InhibitRule = {
@@ -25,10 +27,14 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
   };
 
   const handleDeleteRule = (id: string) => {
-    if (confirm(t('inhibit.deleteConfirm'))) {
-      onChange(inhibitRules.filter(r => r.id !== id));
-      if (editingId === id) setEditingId(null);
-    }
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDelete = () => {
+    if (!confirmDeleteId) return;
+    onChange(inhibitRules.filter(r => r.id !== confirmDeleteId));
+    if (editingId === confirmDeleteId) setEditingId(null);
+    setConfirmDeleteId(null);
   };
 
   const handleUpdateRule = (id: string, updatedFields: Partial<InhibitRule>) => {
@@ -128,17 +134,56 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           </label>
                           <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.source')} />
                         </div>
-                        <input
-                          type="text"
-                          value={rule.source_matchers?.join(', ') || ''}
-                          onChange={(e) => {
-                            const list = e.target.value.split(',').map(m => m.trim()).filter(m => m.length > 0);
-                            handleUpdateRule(rule.id, { source_matchers: list });
-                          }}
-                          placeholder='alertname="NodeDown"'
-                          className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                        />
-                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.commaHint')}</span>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {(rule.source_matchers || []).map((m, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[10px] font-mono text-green-800">
+                              {m}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...(rule.source_matchers || [])];
+                                  updated.splice(idx, 1);
+                                  handleUpdateRule(rule.id, { source_matchers: updated });
+                                }}
+                                className="p-0.5 rounded hover:bg-green-200/50 text-green-400 hover:text-green-600"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            id={`source-${rule.id}`}
+                            placeholder='alertname="NodeDown"'
+                            className="flex-1 text-[10px] p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val && !(rule.source_matchers || []).includes(val)) {
+                                  handleUpdateRule(rule.id, { source_matchers: [...(rule.source_matchers || []), val] });
+                                  (e.target as HTMLInputElement).value = '';
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById(`source-${rule.id}`) as HTMLInputElement;
+                              const val = input?.value?.trim();
+                              if (val && !(rule.source_matchers || []).includes(val)) {
+                                handleUpdateRule(rule.id, { source_matchers: [...(rule.source_matchers || []), val] });
+                                input.value = '';
+                              }
+                            }}
+                            className="px-2 py-1.5 text-[10px] font-semibold text-green-600 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors shrink-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <span className="text-[9px] text-gray-400 mt-1 block">{t('inhibit.commaHint')}</span>
                       </div>
 
                       {/* Target Matchers */}
@@ -149,17 +194,56 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           </label>
                           <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.target')} />
                         </div>
-                        <input
-                          type="text"
-                          value={rule.target_matchers?.join(', ') || ''}
-                          onChange={(e) => {
-                            const list = e.target.value.split(',').map(m => m.trim()).filter(m => m.length > 0);
-                            handleUpdateRule(rule.id, { target_matchers: list });
-                          }}
-                          placeholder='severity="critical"'
-                          className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                        />
-                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.secondaryHint')}</span>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {(rule.target_matchers || []).map((m, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-50 border border-red-200 rounded text-[10px] font-mono text-red-800">
+                              {m}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...(rule.target_matchers || [])];
+                                  updated.splice(idx, 1);
+                                  handleUpdateRule(rule.id, { target_matchers: updated });
+                                }}
+                                className="p-0.5 rounded hover:bg-red-200/50 text-red-400 hover:text-red-600"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            id={`target-${rule.id}`}
+                            placeholder='severity="critical"'
+                            className="flex-1 text-[10px] p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val && !(rule.target_matchers || []).includes(val)) {
+                                  handleUpdateRule(rule.id, { target_matchers: [...(rule.target_matchers || []), val] });
+                                  (e.target as HTMLInputElement).value = '';
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById(`target-${rule.id}`) as HTMLInputElement;
+                              const val = input?.value?.trim();
+                              if (val && !(rule.target_matchers || []).includes(val)) {
+                                handleUpdateRule(rule.id, { target_matchers: [...(rule.target_matchers || []), val] });
+                                input.value = '';
+                              }
+                            }}
+                            className="px-2 py-1.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors shrink-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <span className="text-[9px] text-gray-400 mt-1 block">{t('inhibit.secondaryHint')}</span>
                       </div>
 
                       {/* Equal Labels */}
@@ -170,17 +254,56 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
                           </label>
                           <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('inhibit.tooltips.equal')} />
                         </div>
-                        <input
-                          type="text"
-                          value={rule.equal?.join(', ') || ''}
-                          onChange={(e) => {
-                            const list = e.target.value.split(',').map(m => m.trim()).filter(m => m.length > 0);
-                            handleUpdateRule(rule.id, { equal: list });
-                          }}
-                          placeholder="instance, node, env"
-                          className="w-full text-xs p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                        />
-                        <span className="text-[10px] text-gray-400 mt-1 block">{t('inhibit.labelCheck')}</span>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {(rule.equal || []).map((eq, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 rounded text-[10px] font-mono text-blue-800">
+                              {eq}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...(rule.equal || [])];
+                                  updated.splice(idx, 1);
+                                  handleUpdateRule(rule.id, { equal: updated });
+                                }}
+                                className="p-0.5 rounded hover:bg-blue-200/50 text-blue-400 hover:text-blue-600"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            id={`equal-${rule.id}`}
+                            placeholder="instance"
+                            className="flex-1 text-[10px] p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val && !(rule.equal || []).includes(val)) {
+                                  handleUpdateRule(rule.id, { equal: [...(rule.equal || []), val] });
+                                  (e.target as HTMLInputElement).value = '';
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById(`equal-${rule.id}`) as HTMLInputElement;
+                              const val = input?.value?.trim();
+                              if (val && !(rule.equal || []).includes(val)) {
+                                handleUpdateRule(rule.id, { equal: [...(rule.equal || []), val] });
+                                input.value = '';
+                              }
+                            }}
+                            className="px-2 py-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors shrink-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <span className="text-[9px] text-gray-400 mt-1 block">{t('inhibit.labelCheck')}</span>
                       </div>
                     </div>
                   ) : (
@@ -249,6 +372,16 @@ export default function InhibitRuleManager({ inhibitRules, onChange }: InhibitRu
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title={t('inhibit.deleteConfirm')}
+        message={t('inhibit.deleteConfirm')}
+        confirmLabel={t('common.confirm')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

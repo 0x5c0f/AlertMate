@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Silence, Matcher } from '../types';
 import { Plus, Trash2, Calendar, User, MessageSquare, AlertTriangle, Eye, EyeOff, Search, Clock, CheckCircle2, PlayCircle, XCircle } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface SilenceManagerProps {
   silences: Silence[];
@@ -11,6 +12,8 @@ interface SilenceManagerProps {
 
 export default function SilenceManager({ silences, onChange }: SilenceManagerProps) {
   const { t } = useTranslation();
+  const [confirmExpireId, setConfirmExpireId] = useState<string | null>(null);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -38,14 +41,14 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
   const handleCreateSilence = (e: React.FormEvent) => {
     e.preventDefault();
     if (!creator.trim() || !comment.trim()) {
-      alert(t('silences.validation_fillRequired'));
+      setAlertMessage(t('silences.validation_fillRequired'));
       return;
     }
 
     // Check if any matchers are empty
     const invalidMatcher = newMatchers.some(m => !m.label.trim() || !m.value.trim());
     if (invalidMatcher) {
-      alert(t('silences.validation_matchersNonEmpty'));
+      setAlertMessage(t('silences.validation_matchersNonEmpty'));
       return;
     }
 
@@ -77,20 +80,23 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
   };
 
   const handleExpireSilence = (id: string) => {
-    if (confirm(t('silences.expireConfirm'))) {
-      // We can set end date to now
-      const updated = silences.map(sil => {
-        if (sil.id === id) {
-          return {
-            ...sil,
-            endsAt: new Date().toISOString(),
-            status: 'expired' as const
-          };
-        }
-        return sil;
-      });
-      onChange(updated);
-    }
+    setConfirmExpireId(id);
+  };
+
+  const handleConfirmExpire = () => {
+    if (!confirmExpireId) return;
+    const updated = silences.map(sil => {
+      if (sil.id === confirmExpireId) {
+        return {
+          ...sil,
+          endsAt: new Date().toISOString(),
+          status: 'expired' as const
+        };
+      }
+      return sil;
+    });
+    onChange(updated);
+    setConfirmExpireId(null);
   };
 
   const getStatus = (sil: Silence): 'active' | 'pending' | 'expired' => {
@@ -367,6 +373,27 @@ export default function SilenceManager({ silences, onChange }: SilenceManagerPro
           })
         )}
       </div>
+      <ConfirmDialog
+        open={!!alertMessage}
+        title={t('common.warning')}
+        message={alertMessage || ''}
+        confirmLabel={t('common.ok')}
+        showCancel={false}
+        variant="warning"
+        onConfirm={() => setAlertMessage(null)}
+        onCancel={() => setAlertMessage(null)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmExpireId}
+        title={t('silences.expireSilence')}
+        message={t('silences.expireConfirm')}
+        confirmLabel={t('silences.expireSilence')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+        onConfirm={handleConfirmExpire}
+        onCancel={() => setConfirmExpireId(null)}
+      />
     </div>
   );
 }

@@ -10,6 +10,8 @@
     "retry": "Retry",
     "remove": "Remove",
     "confirm": "Confirm",
+    "ok": "OK",
+    "warning": "Warning",
     "search": "Search",
     "loading": "Loading...",
     "saving": "Saving...",

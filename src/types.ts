@@ -107,6 +107,7 @@ export interface AlertmanagerConfig {
   route: Route; // Root route
   receivers: Receiver[];
   inhibit_rules?: InhibitRule[];
+  templates?: string[];
 }
 
 export interface AlertmanagerState {

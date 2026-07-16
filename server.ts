@@ -114,6 +114,11 @@ function buildAlertmanagerYaml(config: AlertmanagerConfig): string {
       return cleanRule;
     });
   }
+
+  // Preserve templates if configured
+  if (config.templates && config.templates.length > 0) {
+    yamlObj.templates = config.templates;
+  }
   
   return YAML.stringify(yamlObj, {
     indent: 2,
@@ -121,120 +126,51 @@ function buildAlertmanagerYaml(config: AlertmanagerConfig): string {
   });
 }
 
-// Bootstrapped Default State
+// Bootstrapped Default State — minimal Alertmanager-compatible template
 const DEFAULT_STATE: AlertmanagerState = {
-  targetAlertmanagerUrl: "http://localhost:9093",
+  targetAlertmanagerUrl: process.env.ALERTMANAGER_URL || "http://localhost:9093",
   config: {
     global: {
       resolve_timeout: "5m",
-      smtp_smarthost: "smtp.example.com:587",
-      smtp_from: "alertmanager@example.com",
     },
     route: {
       id: "root",
       receiver: "default-receiver",
-      group_by: ["alertname", "cluster", "service"],
+      group_by: ["alertname"],
       group_wait: "30s",
       group_interval: "5m",
-      repeat_interval: "12h",
-      routes: [
-        {
-          id: "route-1",
-          receiver: "wechat-ops-critical",
-          matchers: ["severity=\"critical\"", "env=\"prod\""],
-          continue: true,
-          routes: [
-            {
-              id: "route-1-1",
-              receiver: "db-dba-sms",
-              matchers: ["service=~\"mysql|postgresql|redis\""],
-            }
-          ]
-        },
-        {
-          id: "route-2",
-          receiver: "dingtalk-dev-warnings",
-          matchers: ["severity=\"warning\""],
-        }
-      ]
+      repeat_interval: "4h",
     },
     receivers: [
       {
         id: "rec-1",
         name: "default-receiver",
-        email_configs: [
-          {
-            to: "admin@example.com",
-            send_resolved: true
-          }
-        ]
-      },
-      {
-        id: "rec-2",
-        name: "wechat-ops-critical",
-        wechat_configs: [
-          {
-            corp_id: "ww123456789abc",
-            agent_id: "1000002",
-            api_secret: "secret-wechat-key-goes-here",
-            to_party: "2",
-            send_resolved: true
-          }
-        ]
-      },
-      {
-        id: "rec-3",
-        name: "dingtalk-dev-warnings",
-        dingtalk_configs: [
-          {
-            webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=mocktoken123456",
-            send_resolved: true
-          }
-        ]
-      },
-      {
-        id: "rec-4",
-        name: "db-dba-sms",
-        webhook_configs: [
-          {
-            url: "https://api.example.com/sms/alerts",
-            send_resolved: true
-          }
-        ]
       }
     ],
-    inhibit_rules: [
-      {
-        id: "inhibit-1",
-        source_matchers: ["alertname=\"NodeDown\""],
-        target_matchers: ["severity=\"critical\""],
-        equal: ["node", "instance"]
-      }
-    ]
   },
-  silences: [
-    {
-      id: "silence-1",
-      matchers: [
-        { label: "instance", value: "db-replica-01", isRegex: false },
-        { label: "alertname", value: "CPUUsageHigh", isRegex: false }
-      ],
-      startsAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-      endsAt: new Date(Date.now() + 8 * 3600000).toISOString(), // in 8 hours
-      createdBy: "Chen (DBA Team)",
-      comment: "Undergoing scheduled RAM expansion. Suppressing noisy CPU alerts.",
-      status: "active"
-    }
-  ]
+  silences: [],
 };
+
+// AI Provider Configuration (from environment variables)
+// AI Copilot — set AI_ENABLED=true to activate
+const AI_ENABLED = process.env.AI_ENABLED === "true";
+const AI_PROVIDER = process.env.AI_PROVIDER || "gemini";
+const AI_BASE_URL = process.env.AI_BASE_URL || "";
+const AI_API_KEY = process.env.AI_API_KEY || "";
+const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-3.5-flash");
+
+// Validate AI config at startup if enabled
+if (AI_ENABLED && !AI_API_KEY) {
+  console.warn("[Alertmanager Configurer] AI_ENABLED=true but AI_API_KEY is not set. AI Copilot will return errors.");
+}
 
 // Lazy Initialized Gemini API Client
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
   if (!geminiClient) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = AI_API_KEY || process.env.GEMINI_API_KEY;
     if (!key) {
-      throw new Error("GEMINI_API_KEY environment variable is not configured. Please add it in Settings > Secrets.");
+      throw new Error("AI_API_KEY or GEMINI_API_KEY environment variable is not configured.");
     }
     geminiClient = new GoogleGenAI({
       apiKey: key,
@@ -417,6 +353,121 @@ app.post("/api/validate", (req, res) => {
   }
 });
 
+// Helper: recursively strip <secret> placeholders from parsed Alertmanager config
+function stripSecrets(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === "string") {
+    return obj === "<secret>" ? "" : obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(stripSecrets);
+  }
+  if (typeof obj === "object") {
+    const result: any = {};
+    for (const key of Object.keys(obj)) {
+      result[key] = stripSecrets(obj[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
+// Helper: convert Alertmanager standard YAML config to internal format with IDs
+function convertAmConfigToInternal(rawConfig: any): AlertmanagerConfig {
+  // Strip <secret> placeholders first
+  const cleaned = stripSecrets(rawConfig);
+  
+  let recIdx = 1;
+  let routeIdx = 1;
+
+  // Add IDs to receivers
+  const receivers: Receiver[] = (cleaned.receivers || []).map((r: any) => ({
+    id: `rec-${recIdx++}`,
+    ...r,
+  }));
+
+  // Add IDs to routes recursively
+  function addRouteIds(route: any): Route {
+    const result: Route = {
+      id: routeIdx++ === 1 ? "root" : `route-${routeIdx - 1}`,
+      ...route,
+    };
+    if (result.routes) {
+      result.routes = result.routes.map(addRouteIds);
+    }
+    return result;
+  }
+
+  const route = cleaned.route ? addRouteIds(cleaned.route) : undefined;
+
+  // Add IDs to inhibit rules
+  const inhibit_rules = (cleaned.inhibit_rules || []).map((r: any, i: number) => ({
+    id: `inhibit-${i + 1}`,
+    ...r,
+  }));
+
+  return {
+    global: cleaned.global || {},
+    route: route || { id: "root", receiver: (receivers[0]?.name || "default") },
+    receivers,
+    ...(inhibit_rules.length > 0 ? { inhibit_rules } : {}),
+    ...(cleaned.templates ? { templates: cleaned.templates } : {}),
+  };
+}
+
+// API: Pull config from a running Alertmanager instance
+app.post("/api/pull-config", async (req, res) => {
+  const { targetUrl } = req.body;
+  if (!targetUrl) {
+    return res.status(400).json({ error: "targetUrl is required" });
+  }
+
+  const statusUrl = `${targetUrl.replace(/\/$/, "")}/api/v2/status`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const statusRes = await fetch(statusUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!statusRes.ok) {
+      return res.status(502).json({
+        error: `Alertmanager returned HTTP ${statusRes.status}. Ensure the target is a running Alertmanager instance.`
+      });
+    }
+
+    const statusData = await statusRes.json();
+    const rawYaml = statusData?.config?.original;
+
+    if (!rawYaml) {
+      return res.status(502).json({
+        error: "Alertmanager returned status but no config.original field was found."
+      });
+    }
+
+    // Parse YAML to JSON
+    const parsed = YAML.parse(rawYaml);
+
+    // Convert to internal format with IDs
+    const internalConfig = convertAmConfigToInternal(parsed);
+
+    res.json({
+      success: true,
+      config: internalConfig,
+      message: `Successfully pulled configuration from Alertmanager at ${targetUrl}.`
+    });
+  } catch (err: any) {
+    let errorMsg = err.message || "Unknown Error";
+    if (err.name === "AbortError") {
+      errorMsg = "Connection timed out (Alertmanager did not respond in 5 seconds)";
+    }
+    res.status(502).json({
+      error: `Failed to reach Alertmanager at ${targetUrl}: ${errorMsg}. Please ensure Alertmanager is running and accessible.`
+    });
+  }
+});
+
 // API: Reload Configuration via Proxy POST /-/reload
 app.post("/api/reload", async (req, res) => {
   const { targetUrl } = req.body;
@@ -464,16 +515,26 @@ app.post("/api/reload", async (req, res) => {
   }
 });
 
+// API: Get AI Copilot configuration (no secrets exposed)
+app.get("/api/ai/config", (_req, res) => {
+  res.json({
+    enabled: AI_ENABLED,
+    provider: AI_PROVIDER,
+    model: AI_MODEL,
+  });
+});
+
 // API: AI Copilot - Suggest/Explain alertmanager settings
 app.post("/api/ai/suggest", async (req, res) => {
+  if (!AI_ENABLED) {
+    return res.status(403).json({ error: "AI Copilot is not enabled. Set AI_ENABLED=true to activate." });
+  }
   const { prompt, currentConfig, model } = req.body;
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
-  try {
-    const ai = getGeminiClient();
-    const systemInstruction = `You are a world-class site reliability engineer and Prometheus/Alertmanager operations expert. 
+  const systemInstruction = `You are a world-class site reliability engineer and Prometheus/Alertmanager operations expert. 
 Your goal is to help users design, refine, and troubleshoot Prometheus Alertmanager configurations.
 The user wants to generate or modify their Alertmanager configuration.
 You must return your response in standard JSON format containing a "explanation" (markdown string explaining your changes) and an "updatedState" field (JSON object) containing any modified receiver lists, route trees, or inhibit rules.
@@ -499,30 +560,71 @@ Use the exact properties from this AlertmanagerConfig schema:
 
 Keep existing configuration in mind if provided. Generate realistic webhook configs, channel layouts, or matchers as requested. Do not invent non-supported schemas. Make sure all IDs are uniquely generated strings (e.g. "route-suggest-1").`;
 
-    const userPrompt = `User Request: ${prompt}
+  const userPrompt = `User Request: ${prompt}
     
 Current Alertmanager Config for Context (use this as a base or ignore if creating totally fresh):
 ${JSON.stringify(currentConfig || {}, null, 2)}`;
 
-    const response = await ai.models.generateContent({
-      model: model || "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        temperature: 0.7,
+  try {
+    let result: any;
+
+    if (AI_PROVIDER === "custom") {
+      if (!AI_BASE_URL || !AI_API_KEY) {
+        return res.status(400).json({ error: "Custom AI provider not configured. Set AI_BASE_URL and AI_API_KEY environment variables." });
       }
-    });
+      const apiUrl = AI_BASE_URL.replace(/\/$/, "") + "/chat/completions";
+      const apiRes = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${AI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: model || AI_MODEL,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.7,
+          response_format: { type: "json_object" },
+        }),
+      });
 
-    const text = response.text;
-    const result = JSON.parse(text || "{}");
+      if (!apiRes.ok) {
+        const errText = await apiRes.text();
+        return res.status(502).json({ error: `AI API returned ${apiRes.status}: ${errText}` });
+      }
+
+      const apiData = await apiRes.json() as any;
+      const content = apiData?.choices?.[0]?.message?.content;
+      if (!content) {
+        return res.status(502).json({ error: "AI API returned empty response" });
+      }
+      result = JSON.parse(content);
+    } else {
+      // Use built-in Gemini
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: model || AI_MODEL,
+        contents: userPrompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          temperature: 0.7,
+        }
+      });
+      const text = response.text;
+      result = JSON.parse(text || "{}");
+    }
+
     res.json(result);
-
   } catch (err: any) {
-    console.error("Gemini suggestion error:", err);
+    console.error("AI suggestion error:", err);
     res.status(500).json({
-      error: `AI Engine Error: ${err.message || "Failed to contact Gemini"}`,
-      details: "Ensure your GEMINI_API_KEY is configured in the Secrets panel."
+      error: `AI Engine Error: ${err.message || "Failed to contact AI"}`,
+      details: AI_PROVIDER === "custom"
+        ? "Check AI_BASE_URL and AI_API_KEY environment variables."
+        : "Ensure GEMINI_API_KEY is configured."
     });
   }
 });

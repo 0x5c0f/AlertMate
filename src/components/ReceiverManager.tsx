@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Receiver, SlackConfig, WechatConfig, DingtalkConfig, WebhookConfig, EmailConfig, PagerdutyConfig } from '../types';
 import { Plus, Trash2, Mail, Slack, Send, Layers, Settings, MessageSquare, AlertCircle, Phone } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface ReceiverManagerProps {
   receivers: Receiver[];
@@ -11,6 +12,8 @@ interface ReceiverManagerProps {
 
 export default function ReceiverManager({ receivers, onChange }: ReceiverManagerProps) {
   const { t } = useTranslation();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [activeReceiverId, setActiveReceiverId] = useState<string>(receivers[0]?.id || '');
   const [isAdding, setIsAdding] = useState(false);
   const [newReceiverName, setNewReceiverName] = useState('');
@@ -23,7 +26,7 @@ export default function ReceiverManager({ receivers, onChange }: ReceiverManager
     
     // Check for duplicate name
     if (receivers.some(r => r.name.trim().toLowerCase() === newReceiverName.trim().toLowerCase())) {
-      alert(t('receivers.duplicateName'));
+      setAlertMessage(t('receivers.duplicateName'));
       return;
     }
 
@@ -42,16 +45,10 @@ export default function ReceiverManager({ receivers, onChange }: ReceiverManager
   const handleDeleteReceiver = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (receivers.length <= 1) {
-      alert(t('receivers.lastReceiverWarning'));
+      setAlertMessage(t('receivers.lastReceiverWarning'));
       return;
     }
-    if (confirm(t('receivers.deleteConfirm'))) {
-      const updated = receivers.filter(r => r.id !== id);
-      onChange(updated);
-      if (activeReceiverId === id) {
-        setActiveReceiverId(updated[0]?.id || '');
-      }
-    }
+    setConfirmDeleteId(id);
   };
 
   const updateActiveReceiver = (updater: (rec: Receiver) => Receiver) => {
@@ -869,6 +866,8 @@ export default function ReceiverManager({ receivers, onChange }: ReceiverManager
           </div>
         )}
       </div>
+      <ConfirmDialog open={!!alertMessage} title={t('receivers.title')} message={alertMessage || ''} confirmLabel={t('common.ok')} showCancel={false} variant="warning" onConfirm={() => setAlertMessage(null)} onCancel={() => setAlertMessage(null)} />
+      <ConfirmDialog open={!!confirmDeleteId} title={t('receivers.deleteReceiver')} message={t('receivers.deleteConfirm')} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" onConfirm={() => { if (confirmDeleteId) { const updated = receivers.filter(r => r.id !== confirmDeleteId); onChange(updated); if (activeReceiverId === confirmDeleteId) { setActiveReceiverId(updated[0]?.id || ''); } setConfirmDeleteId(null); } }} onCancel={() => setConfirmDeleteId(null)} />
     </div>
   );
 }
