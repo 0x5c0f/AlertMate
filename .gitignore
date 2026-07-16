@@ -8,3 +8,4 @@ coverage/
 !.env.example
 
 reasonix.toml
+data/
