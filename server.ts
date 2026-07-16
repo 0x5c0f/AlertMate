@@ -152,7 +152,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   if (!AUTH_ENABLED) return next();
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Authentication required" });
-  try { jwt.verify(header.slice(7), JWT_SECRET); next(); }
+  try { jwt.verify(header.slice(7), JWT_SECRET, { algorithms: ["HS256"] }); next(); }
   catch { res.status(401).json({ error: "Invalid or expired token" }); }
 }
 
@@ -162,7 +162,7 @@ app.get("/api/auth/status", (req, res) => {
   if (AUTH_ENABLED) {
     const header = req.headers.authorization;
     if (header?.startsWith("Bearer ")) {
-      try { jwt.verify(header.slice(7), JWT_SECRET); authenticated = true; } catch {}
+      try { jwt.verify(header.slice(7), JWT_SECRET, { algorithms: ["HS256"] }); authenticated = true; } catch {}
     }
   }
   res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
@@ -186,7 +186,11 @@ const AI_BASE_URL = process.env.AI_BASE_URL || "";
 const AI_API_KEY = process.env.AI_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-2.5-flash");
 
-// Validate AI config at startup if enabled
+// Validate AI config at startup - AI requires auth to prevent API key abuse
+if (AI_ENABLED && !ADMIN_PASSWORD) {
+  console.error("[Alertmanager Configurer] FATAL: AI_ENABLED=true requires ADMIN_PASSWORD to be set to prevent unauthorized API usage.");
+  process.exit(1);
+}
 if (AI_ENABLED && !AI_API_KEY) {
   console.warn("[Alertmanager Configurer] AI_ENABLED=true but AI_API_KEY is not set. AI Copilot will return errors.");
 }
@@ -391,7 +395,7 @@ app.post("/api/validate", (req, res) => {
   }
 });
 
-// API: Validate Alertmanager YAML Configuration
+// API: Get AI Copilot configuration (no secrets exposed)
 app.get("/api/ai/config", (_req, res) => {
   res.json({
     enabled: AI_ENABLED,

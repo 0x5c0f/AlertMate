@@ -113,34 +113,6 @@ export default function RemoteManager({ targetUrl }: { targetUrl: string }) {
     } catch {}
   };
 
-  const handleCreateSilence = async () => {
-    setCreateLoading(true);
-    try {
-      if (editingSilenceId) await amFetch(targetUrl, `/api/v2/silence/${editingSilenceId}`, { method: 'DELETE' });
-      const startsAt = new Date();
-      const hours = parseFloat(newDuration) || 2;
-      const endsAt = new Date(startsAt.getTime() + hours * 3600000);
-      const res = await amFetch(targetUrl, '/api/v2/silences', {
-        method: 'POST',
-        body: JSON.stringify({
-          matchers: newMatchers.filter(m => m.name && m.value),
-          startsAt: startsAt.toISOString(),
-          endsAt: endsAt.toISOString(),
-          createdBy: newCreatedBy || 'admin',
-          comment: newComment || 'Silence via Configurer',
-        }),
-      });
-      if (res.ok) {
-        setShowSilenceForm(false);
-        setEditingSilenceId(null);
-        setNewMatchers([{ name: '', value: '', isRegex: false }]);
-        setNewComment('');
-        fetchSilences();
-      }
-    } catch {}
-    finally { setCreateLoading(false); }
-  };
-
   useEffect(() => { fetchAlerts(); }, []);
   useEffect(() => { if (subTab === 'silences') fetchSilences(); }, [subTab]);
   useEffect(() => { if (subTab === 'status') fetchStatus(); }, [subTab]);
