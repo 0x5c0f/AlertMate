@@ -1,0 +1,6 @@
+{
+  "name": "Alertmanager Configurer",
+  "description": "A visual, full-featured configurer for Prometheus Alertmanager supporting receiver management, interactive routing trees, inhibit rules, silence management, configuration validation, and remote reloading.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

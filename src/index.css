@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body.theme-dark {
+  background-color: #09090b;
+  color: #e4e4e7;
+}
+
+body.theme-light {
+  background-color: #fafafa;
+  color: #18181b;
+}
+
+/* Custom radial dots background pattern */
+body.theme-dark .bg-dots {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+body.theme-light .bg-dots {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.035) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* Scrollbar styling for dark mode */
+body.theme-dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+body.theme-dark ::-webkit-scrollbar-track {
+  background: #09090b;
+}
+body.theme-dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+body.theme-dark ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Scrollbar styling for light mode */
+body.theme-light ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+body.theme-light ::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+body.theme-light ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 3px;
+}
+body.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Sophisticated Dark Utility Mappings */
+body.theme-dark .bg-white {
+  background-color: #0c0c0e !important;
+}
+
+body.theme-dark .bg-gray-50 {
+  background-color: #141416 !important;
+}
+
+body.theme-dark .bg-gray-50\/30 {
+  background-color: rgba(20, 20, 22, 0.4) !important;
+}
+
+body.theme-dark .bg-gray-50\/50 {
+  background-color: rgba(20, 20, 22, 0.6) !important;
+}
+
+body.theme-dark .bg-gray-100 {
+  background-color: #1a1a1e !important;
+}
+
+/* Borders */
+body.theme-dark .border-gray-100,
+body.theme-dark .border-gray-150,
+body.theme-dark .border-gray-200,
+body.theme-dark .border-gray-300,
+body.theme-dark .border-gray-400 {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Text Colors */
+body.theme-dark .text-gray-900,
+body.theme-dark .text-gray-800,
+body.theme-dark .text-gray-700 {
+  color: #f4f4f5 !important;
+}
+
+body.theme-dark .text-gray-600,
+body.theme-dark .text-gray-500 {
+  color: #a1a1aa !important;
+}
+
+body.theme-dark .text-gray-400 {
+  color: #71717a !important;
+}
+
+/* Accent overrides (e.g. blue badges/highlights converted to Sophisticated Dark Amber/Orange) */
+body.theme-dark .bg-blue-50 {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+body.theme-dark .border-blue-100,
+body.theme-dark .border-blue-200,
+body.theme-dark .border-blue-300 {
+  border-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+body.theme-dark .text-blue-900,
+body.theme-dark .text-blue-800,
+body.theme-dark .text-blue-700,
+body.theme-dark .text-blue-600,
+body.theme-dark .text-blue-500 {
+  color: #fbbf24 !important;
+}
+
+body.theme-dark .bg-blue-600 {
+  background-color: #d97706 !important;
+  color: #000000 !important;
+}
+
+body.theme-dark .bg-blue-600:hover {
+  background-color: #f59e0b !important;
+}
+
+/* Soft hover overrides */
+body.theme-dark .hover\:bg-gray-50:hover,
+body.theme-dark .hover\:bg-gray-100:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Inputs, Selects, and Textareas */
+body.theme-dark input,
+body.theme-dark select,
+body.theme-dark textarea {
+  background-color: #050505 !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+body.theme-dark input:focus,
+body.theme-dark select:focus,
+body.theme-dark textarea:focus {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2) !important;
+  outline: none !important;
+}
+
+/* Green alerts / Active badges */
+body.theme-dark .bg-green-50,
+body.theme-dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+
+body.theme-dark .text-green-700,
+body.theme-dark .text-emerald-800 {
+  color: #34d399 !important;
+}
+
+body.theme-dark .border-green-100,
+body.theme-dark .border-emerald-100 {
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+/* Red alerts / Inhibit Rule badges */
+body.theme-dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+
+body.theme-dark .text-red-700 {
+  color: #f87171 !important;
+}
+
+body.theme-dark .border-red-100 {
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Teal continue labels */
+body.theme-dark .bg-teal-50 {
+  background-color: rgba(20, 184, 166, 0.08) !important;
+}
+
+body.theme-dark .text-teal-700 {
+  color: #2dd4bf !important;
+}
+
+body.theme-dark .border-teal-100 {
+  border-color: rgba(20, 184, 166, 0.2) !important;
+}
+
+/* Purple AI advisor theme */
+body.theme-dark .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.08) !important;
+}
+
+body.theme-dark .text-purple-700 {
+  color: #c084fc !important;
+}
+
+body.theme-dark .border-purple-100 {
+  border-color: rgba(168, 85, 247, 0.2) !important;
+}
+
+/* --- Sophisticated Light Theme Helper Overrides --- */
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+  border: 1px solid #e4e4e7 !important;
+}
+
+body.theme-light input:focus,
+body.theme-light select:focus,
+body.theme-light textarea:focus {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2) !important;
+  outline: none !important;
+}
