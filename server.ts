@@ -529,8 +529,13 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Alertmanager Configurer] Server running on http://localhost:${PORT} in ${process.env.NODE_ENV || "development"} mode.`);
+    console.log(`[AlertMate] Server running on http://localhost:${PORT} in ${process.env.NODE_ENV || "development"} mode.`);
   });
 }
 
-startServer();
+// Only auto-start in local dev (not on Vercel)
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
