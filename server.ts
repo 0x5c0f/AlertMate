@@ -10,21 +10,13 @@ import { createServer as createViteServer } from "vite";
 import YAML from "yaml";
 import { GoogleGenAI } from "@google/genai";
 import jwt from "jsonwebtoken";
+import { timingSafeEqual } from "crypto";
 import { AlertmanagerState, AlertmanagerConfig, Silence, Route, Receiver } from "./src/types.js";
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "50mb" }));
-
-// Persistent Storage Location
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "alertmanager_config_v2.json");
-
-// Ensure Data Directory Exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+app.use(express.json({ limit: "1mb" }));
 
 // Helper to clean up internal Route objects to match official Alertmanager YAML structure
 function cleanRouteForYaml(route: Route): any {
@@ -88,18 +80,7 @@ function buildAlertmanagerYaml(config: AlertmanagerConfig): string {
   const yamlObj: any = {};
   
   if (config.global) {
-    // Only include non-empty properties
-    const globalObj: any = {};
-    if (config.global.resolve_timeout) globalObj.resolve_timeout = config.global.resolve_timeout;
-    if (config.global.smtp_smarthost) globalObj.smtp_smarthost = config.global.smtp_smarthost;
-    if (config.global.smtp_from) globalObj.smtp_from = config.global.smtp_from;
-    if (config.global.smtp_auth_username) globalObj.smtp_auth_username = config.global.smtp_auth_username;
-    if (config.global.smtp_auth_password) globalObj.smtp_auth_password = config.global.smtp_auth_password;
-    if (config.global.slack_api_url) globalObj.slack_api_url = config.global.slack_api_url;
-    
-    if (Object.keys(globalObj).length > 0) {
-      yamlObj.global = globalObj;
-    }
+    yamlObj.global = { ...config.global };
   }
   
   // Parse route tree
@@ -158,16 +139,44 @@ const DEFAULT_STATE: AlertmanagerState = {
 
 // Auth Configuration
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
-const JWT_SECRET = process.env.JWT_SECRET || (ADMIN_PASSWORD ? `am-configurer-${ADMIN_PASSWORD}` : "change-me");
+if (ADMIN_PASSWORD) {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+    console.error("[Alertmanager Configurer] FATAL: JWT_SECRET must be set to a strong random value (min 16 chars) when ADMIN_PASSWORD is configured.");
+    process.exit(1);
+  }
+}
+const JWT_SECRET = process.env.JWT_SECRET || "";
 const AUTH_ENABLED = !!ADMIN_PASSWORD;
 
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!AUTH_ENABLED) return next();
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Authentication required" });
-  try { jwt.verify(header.slice(7), JWT_SECRET); next(); }
+  try { jwt.verify(header.slice(7), JWT_SECRET, { algorithms: ["HS256"] }); next(); }
   catch { res.status(401).json({ error: "Invalid or expired token" }); }
 }
+
+// API: Auth status
+app.get("/api/auth/status", (req, res) => {
+  let authenticated = !AUTH_ENABLED;
+  if (AUTH_ENABLED) {
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) {
+      try { jwt.verify(header.slice(7), JWT_SECRET, { algorithms: ["HS256"] }); authenticated = true; } catch {}
+    }
+  }
+  res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { password } = req.body;
+  if (!AUTH_ENABLED) return res.json({ token: "", message: "Auth not configured" });
+  const a = Buffer.from(password || ""), b = Buffer.from(ADMIN_PASSWORD);
+  if (a.length !== b.length || !timingSafeEqual(a, b))
+    return res.status(401).json({ error: "Invalid password" });
+  const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
+  res.json({ token });
+});
 
 // AI Provider Configuration (from environment variables)
 // AI Copilot — set AI_ENABLED=true to activate
@@ -175,9 +184,13 @@ const AI_ENABLED = process.env.AI_ENABLED === "true";
 const AI_PROVIDER = process.env.AI_PROVIDER || "gemini";
 const AI_BASE_URL = process.env.AI_BASE_URL || "";
 const AI_API_KEY = process.env.AI_API_KEY || "";
-const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-3.5-flash");
+const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === "custom" ? "gpt-4o" : "gemini-2.5-flash");
 
-// Validate AI config at startup if enabled
+// Validate AI config at startup - AI requires auth to prevent API key abuse
+if (AI_ENABLED && !ADMIN_PASSWORD) {
+  console.error("[Alertmanager Configurer] FATAL: AI_ENABLED=true requires ADMIN_PASSWORD to be set to prevent unauthorized API usage.");
+  process.exit(1);
+}
 if (AI_ENABLED && !AI_API_KEY) {
   console.warn("[Alertmanager Configurer] AI_ENABLED=true but AI_API_KEY is not set. AI Copilot will return errors.");
 }
@@ -202,63 +215,53 @@ function getGeminiClient(): GoogleGenAI {
   return geminiClient;
 }
 
-// Load configurations from local disk
-function loadState(): AlertmanagerState {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const content = fs.readFileSync(DATA_FILE, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch (err) {
-    console.error("Error loading config state from disk, using defaults:", err);
-  }
-  return DEFAULT_STATE;
-}
-
-// Save configuration to disk
-function saveState(state: AlertmanagerState) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error saving config state to disk:", err);
-  }
-}
-
-
-// API: Auth status
-app.get("/api/auth/status", (req, res) => {
-  let authenticated = !AUTH_ENABLED;
-  if (AUTH_ENABLED) {
-    const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ")) {
-      try { jwt.verify(header.slice(7), JWT_SECRET); authenticated = true; } catch {}
-    }
-  }
-  res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
-});
-
-app.post("/api/auth/login", (req, res) => {
-  const { password } = req.body;
-  if (!AUTH_ENABLED) return res.json({ token: "", message: "Auth not configured" });
-  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: "Invalid password" });
-  const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
-  res.json({ token });
-});
-
-// API: Get Current Config State
+// API: Get Current Config State (read-only, no server-side persistence)
 app.get("/api/config", (req, res) => {
-  const state = loadState();
-  res.json(state);
+  if (AUTH_ENABLED) {
+    const clean = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    if (clean.config?.global) {
+      clean.config.global.smtp_auth_password = '';
+      clean.config.global.slack_api_url = '';
+    }
+    if (clean.config?.receivers) clean.config.receivers.forEach((r: any) => {
+      if (r.wechat_configs) r.wechat_configs = r.wechat_configs.map((w: any) => ({ ...w, api_secret: '' }));
+      if (r.email_configs) r.email_configs = r.email_configs.map((e: any) => ({ ...e, auth_password: '' }));
+      if (r.dingtalk_configs) r.dingtalk_configs = r.dingtalk_configs.map((d: any) => ({ ...d, secret: '' }));
+      if (r.slack_configs) r.slack_configs = r.slack_configs.map((s: any) => ({ ...s, api_url: '' }));
+      if (r.webhook_configs) r.webhook_configs = r.webhook_configs.map((w: any) => ({ ...w, url: '' }));
+      if (r.pagerduty_configs) r.pagerduty_configs = r.pagerduty_configs.map((p: any) => ({ ...p, routing_key: '', service_key: '' }));
+    });
+    res.json(clean);
+  } else { res.json(DEFAULT_STATE); }
 });
 
-// API: Save Config State
-app.post("/api/config", (req, res) => {
-  const newState = req.body as AlertmanagerState;
-  if (!newState || !newState.config) {
-    return res.status(400).json({ error: "Invalid payload: config is required" });
-  }
-  saveState(newState);
-  res.json({ success: true, message: "Configuration saved successfully" });
+// API: Parse raw Alertmanager YAML to internal format (no outbound requests)
+app.post("/api/parse-yaml", (req, res) => {
+  try {
+    const { yaml: yamlStr } = req.body;
+    if (!yamlStr) return res.status(400).json({ error: "yaml field is required" });
+    const parsed = YAML.parse(yamlStr);
+    const stripSecrets = (obj: any): any => {
+      if (typeof obj === "string") return obj === "<secret>" ? "" : obj;
+      if (Array.isArray(obj)) return obj.map(stripSecrets);
+      if (typeof obj === "object" && obj) { const r: any = {}; for (const k of Object.keys(obj)) r[k] = stripSecrets(obj[k]); return r; }
+      return obj;
+    };
+    const cleaned = stripSecrets(parsed);
+    let recIdx = 1, routeIdx = 1;
+    const receivers = (cleaned.receivers || []).map((r: any) => ({ id: `rec-${recIdx++}`, ...r }));
+    const addRouteIds = (r: any): Route => {
+      const result: Route = { id: routeIdx++ === 1 ? "root" : `route-${routeIdx - 1}`, ...r };
+      if (result.routes) result.routes = result.routes.map(addRouteIds);
+      return result;
+    };
+    const route = cleaned.route ? addRouteIds(cleaned.route) : { id: "root", receiver: (receivers[0]?.name || "default") };
+    const inhibit_rules = (cleaned.inhibit_rules || []).map((r: any, i: number) => ({ id: `inhibit-${i + 1}`, ...r }));
+    const config: any = { global: cleaned.global || {}, route, receivers };
+    if (inhibit_rules.length > 0) config.inhibit_rules = inhibit_rules;
+    if (cleaned.templates) config.templates = cleaned.templates;
+    res.json({ config });
+  } catch (err: any) { res.json({ error: `YAML parse error: ${err.message}` }); }
 });
 
 // API: Validate Alertmanager YAML Configuration
@@ -392,189 +395,6 @@ app.post("/api/validate", (req, res) => {
   }
 });
 
-// Helper: recursively strip <secret> placeholders from parsed Alertmanager config
-function stripSecrets(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === "string") {
-    return obj === "<secret>" ? "" : obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(stripSecrets);
-  }
-  if (typeof obj === "object") {
-    const result: any = {};
-    for (const key of Object.keys(obj)) {
-      result[key] = stripSecrets(obj[key]);
-    }
-    return result;
-  }
-  return obj;
-}
-
-// Helper: convert Alertmanager standard YAML config to internal format with IDs
-function convertAmConfigToInternal(rawConfig: any): AlertmanagerConfig {
-  // Strip <secret> placeholders first
-  const cleaned = stripSecrets(rawConfig);
-  
-  let recIdx = 1;
-  let routeIdx = 1;
-
-  // Add IDs to receivers
-  const receivers: Receiver[] = (cleaned.receivers || []).map((r: any) => ({
-    id: `rec-${recIdx++}`,
-    ...r,
-  }));
-
-  // Add IDs to routes recursively
-  function addRouteIds(route: any): Route {
-    const result: Route = {
-      id: routeIdx++ === 1 ? "root" : `route-${routeIdx - 1}`,
-      ...route,
-    };
-    if (result.routes) {
-      result.routes = result.routes.map(addRouteIds);
-    }
-    return result;
-  }
-
-  const route = cleaned.route ? addRouteIds(cleaned.route) : undefined;
-
-  // Add IDs to inhibit rules
-  const inhibit_rules = (cleaned.inhibit_rules || []).map((r: any, i: number) => ({
-    id: `inhibit-${i + 1}`,
-    ...r,
-  }));
-
-  return {
-    global: cleaned.global || {},
-    route: route || { id: "root", receiver: (receivers[0]?.name || "default") },
-    receivers,
-    ...(inhibit_rules.length > 0 ? { inhibit_rules } : {}),
-    ...(cleaned.templates ? { templates: cleaned.templates } : {}),
-  };
-}
-
-// API: Pull config from a running Alertmanager instance
-app.post("/api/pull-config", async (req, res) => {
-  const { targetUrl } = req.body;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "targetUrl is required" });
-  }
-
-  const statusUrl = `${targetUrl.replace(/\/$/, "")}/api/v2/status`;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const statusRes = await fetch(statusUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (!statusRes.ok) {
-      return res.status(502).json({
-        error: `Alertmanager returned HTTP ${statusRes.status}. Ensure the target is a running Alertmanager instance.`
-      });
-    }
-
-    const statusData = await statusRes.json();
-    const rawYaml = statusData?.config?.original;
-
-    if (!rawYaml) {
-      return res.status(502).json({
-        error: "Alertmanager returned status but no config.original field was found."
-      });
-    }
-
-    // Parse YAML to JSON
-    const parsed = YAML.parse(rawYaml);
-
-    // Convert to internal format with IDs
-    const internalConfig = convertAmConfigToInternal(parsed);
-
-    res.json({
-      success: true,
-      config: internalConfig,
-      message: `Successfully pulled configuration from Alertmanager at ${targetUrl}.`
-    });
-  } catch (err: any) {
-    let errorMsg = err.message || "Unknown Error";
-    if (err.name === "AbortError") {
-      errorMsg = "Connection timed out (Alertmanager did not respond in 5 seconds)";
-    }
-    res.status(502).json({
-      error: `Failed to reach Alertmanager at ${targetUrl}: ${errorMsg}. Please ensure Alertmanager is running and accessible.`
-    });
-  }
-});
-
-// API: Reload Configuration via Proxy POST /-/reload
-app.post("/api/reload", authMiddleware, async (req, res) => {
-  const { targetUrl } = req.body;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "targetUrl is required" });
-  }
-
-  const reloadUrl = `${targetUrl.replace(/\/$/, "")}/-/reload`;
-  console.log(`Proxying Alertmanager configuration reload to: ${reloadUrl}`);
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds timeout
-
-    const reloadRes = await fetch(reloadUrl, {
-      method: "POST",
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    if (reloadRes.ok) {
-      res.json({
-        success: true,
-        status: reloadRes.status,
-        message: `Successfully called /-/reload on Alertmanager at ${targetUrl}. Configuration has been hot-reloaded.`
-      });
-    } else {
-      const text = await reloadRes.text();
-      res.status(502).json({
-        success: false,
-        status: reloadRes.status,
-        message: `Failed to reload. Alertmanager returned status ${reloadRes.status}: ${text}`
-      });
-    }
-  } catch (err: any) {
-    let errorMsg = err.message || "Unknown Connection Error";
-    if (err.name === "AbortError") {
-      errorMsg = "Connection timed out (Alertmanager did not respond in 5 seconds)";
-    }
-    res.status(502).json({
-      success: false,
-      message: `Failed to reach Alertmanager at ${reloadUrl}: ${errorMsg}. Please ensure Alertmanager is running, accessible, and hot-reload is enabled (flag --web.enable-lifecycle).`
-    });
-  }
-});
-
-// TARGET_URL for remote proxy
-const TARGET_URL = process.env.ALERTMANAGER_URL || "http://localhost:9093";
-
-async function proxyToAlertmanager(req: express.Request, res: express.Response, amPath: string) {
-  const targetUrl = req.body?.targetUrl || req.query.targetUrl as string || process.env.ALERTMANAGER_URL || "http://localhost:9093";
-  try {
-    const url = `${targetUrl.replace(/\/$/, "")}${amPath}`;
-    const fetchOpts: RequestInit = { method: req.method, headers: { "Content-Type": "application/json" } };
-    if (req.method !== "GET" && req.method !== "HEAD") fetchOpts.body = JSON.stringify(req.body);
-    const amRes = await fetch(url, fetchOpts);
-    const data = await amRes.json().catch(() => ({}));
-    res.status(amRes.status).json(data);
-  } catch (err: any) {
-    res.status(502).json({ error: `Failed to reach Alertmanager: ${err.message}` });
-  }
-}
-app.all("/api/remote/alerts",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/alerts"));
-app.all("/api/remote/silences", authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/silences"));
-app.all("/api/remote/silence/:id", authMiddleware, (req, res) => proxyToAlertmanager(req, res, `/api/v2/silence/${req.params.id}`));
-app.get("/api/remote/status",   authMiddleware, (req, res) => proxyToAlertmanager(req, res, "/api/v2/status"));
-
 // API: Get AI Copilot configuration (no secrets exposed)
 app.get("/api/ai/config", (_req, res) => {
   res.json({
@@ -660,7 +480,7 @@ ${JSON.stringify(currentConfig || {}, null, 2)}`;
       if (!content) {
         return res.status(502).json({ error: "AI API returned empty response" });
       }
-      result = JSON.parse(content);
+      try { result = JSON.parse(content); } catch { return res.status(502).json({ error: "AI returned non-JSON response" }); }
     } else {
       // Use built-in Gemini
       const ai = getGeminiClient();
@@ -674,7 +494,7 @@ ${JSON.stringify(currentConfig || {}, null, 2)}`;
         }
       });
       const text = response.text;
-      result = JSON.parse(text || "{}");
+      try { result = JSON.parse(text || "{}"); } catch { result = { explanation: "AI returned non-JSON response", suggestedConfig: {} }; }
     }
 
     res.json(result);

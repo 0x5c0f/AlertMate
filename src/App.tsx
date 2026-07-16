@@ -16,10 +16,7 @@ import {
   VolumeX,
   FileCheck,
   Sparkles,
-  Save,
-  CheckCircle,
   HelpCircle,
-  AlertCircle,
   Layers,
   Radio,
   Clock,
@@ -37,9 +34,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'receivers' | 'routes' | 'inhibit' | 'silences' | 'deploy' | 'copilot' | 'remote'>(() => {
     return (localStorage.getItem('alertmanager-tab') as any) || 'receivers';
   });
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('alertmanager-theme') as 'dark' | 'light') || 'dark';
   });
@@ -64,25 +58,30 @@ export default function App() {
     localStorage.setItem('alertmanager-theme', theme);
   }, [theme]);
 
-  // Load state on mount
+  // Load state on mount — localStorage first, server default as fallback
   useEffect(() => {
-    const fetchState = async () => {
+    const saved = localStorage.getItem('am-config-state');
+    if (saved) {
+      try { setState(JSON.parse(saved)); } catch {}
+    }
+    const fetchDefault = async () => {
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
           const data = await res.json();
-          setState(data);
-        } else {
-          console.error("Failed to load Alertmanager config, HTTP", res.status);
+          setState(prev => prev || data);
         }
-      } catch (err) {
-        console.error("Failed to load state from API:", err);
-      }
+      } catch {}
     };
-    fetchState();
+    fetchDefault();
     fetch('/api/ai/config').then(r => r.json()).then(c => setAiEnabled(c.enabled)).catch(() => {});
     fetchAuthStatus();
   }, []);
+
+  // Sync config state to localStorage whenever it changes
+  useEffect(() => {
+    if (state) localStorage.setItem('am-config-state', JSON.stringify(state));
+  }, [state]);
 
   const fetchAuthStatus = () => {
     fetch('/api/auth/status', {
@@ -140,32 +139,6 @@ export default function App() {
     fetchAuthStatus();
   };
 
-  // Save state to backend api
-  const handleSaveState = async (stateToSave = state) => {
-    if (!stateToSave) return;
-    setIsSaving(true);
-    setSaveMessage(null);
-    setSaveError(null);
-
-    try {
-      const res = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(stateToSave)
-      });
-      if (res.ok) {
-        setSaveMessage(t('app.saved'));
-        setTimeout(() => setSaveMessage(null), 3000);
-      } else {
-        const data = await res.json();
-        setSaveError(data.error || t('app.saveFailed'));
-      }
-    } catch (err: any) {
-      setSaveError(`${t('app.networkLost')}: ${err.message || t('app.unknownError')}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   if (!state) {
     const isDark = theme === 'dark';
@@ -184,67 +157,28 @@ export default function App() {
 
   // State Change Updaters
   const handleReceiversChange = (receivers: Receiver[]) => {
-    const newState = {
-      ...state,
-      config: {
-        ...state.config,
-        receivers
-      }
-    };
-    setState(newState);
-    handleSaveState(newState); // Auto-save on modification!
+    setState(prev => prev ? { ...prev, config: { ...prev.config, receivers } } : null);
   };
 
   const handleRouteTreeChange = (route: Route) => {
-    const newState = {
-      ...state,
-      config: {
-        ...state.config,
-        route
-      }
-    };
-    setState(newState);
-    handleSaveState(newState); // Auto-save on modification!
+    setState(prev => prev ? { ...prev, config: { ...prev.config, route } } : null);
   };
 
   const handleInhibitRulesChange = (inhibit_rules: InhibitRule[]) => {
-    const newState = {
-      ...state,
-      config: {
-        ...state.config,
-        inhibit_rules
-      }
-    };
-    setState(newState);
-    handleSaveState(newState); // Auto-save on modification!
+    setState(prev => prev ? { ...prev, config: { ...prev.config, inhibit_rules } } : null);
   };
 
   const handleSilencesChange = (silences: Silence[]) => {
-    const newState = {
-      ...state,
-      silences
-    };
-    setState(newState);
-    handleSaveState(newState); // Auto-save on modification!
+    setState(prev => prev ? { ...prev, silences } : null);
   };
 
   const handleTargetUrlChange = (targetAlertmanagerUrl: string) => {
-    const newState = {
-      ...state,
-      targetAlertmanagerUrl
-    };
-    setState(newState);
-    handleSaveState(newState); // Auto-save on modification!
+    setState(prev => prev ? { ...prev, targetAlertmanagerUrl } : null);
   };
 
   // Pull config from remote Alertmanager and apply
   const handlePullConfig = (pulledConfig: AlertmanagerConfig) => {
-    const newState = {
-      ...state,
-      config: pulledConfig
-    };
-    setState(newState);
-    handleSaveState(newState);
+    setState(prev => prev ? { ...prev, config: pulledConfig } : null);
   };
 
   // AI Copilot Integration handler - bulk updates config components
@@ -253,24 +187,14 @@ export default function App() {
     route?: Route;
     inhibit_rules?: InhibitRule[];
   }) => {
-    const updatedConfig = { ...state.config };
-    
-    if (suggestions.receivers) {
-      updatedConfig.receivers = suggestions.receivers;
-    }
-    if (suggestions.route) {
-      updatedConfig.route = suggestions.route;
-    }
-    if (suggestions.inhibit_rules) {
-      updatedConfig.inhibit_rules = suggestions.inhibit_rules;
-    }
-
-    const newState = {
-      ...state,
-      config: updatedConfig
-    };
-    setState(newState);
-    handleSaveState(newState);
+    setState(prev => {
+      if (!prev) return null;
+      const updatedConfig = { ...prev.config };
+      if (suggestions.receivers) updatedConfig.receivers = suggestions.receivers;
+      if (suggestions.route) updatedConfig.route = suggestions.route;
+      if (suggestions.inhibit_rules) updatedConfig.inhibit_rules = suggestions.inhibit_rules;
+      return { ...prev, config: updatedConfig };
+    });
   };
 
   // Counting helpers for stats header
@@ -342,18 +266,6 @@ export default function App() {
 
           {/* Manual Save Button, Theme Toggle & Storage Info */}
           <div className="flex items-center gap-3 self-end sm:self-center">
-            {saveMessage && (
-              <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20 animate-fade-in">
-                <CheckCircle className="w-3.5 h-3.5" />
-                {saveMessage}
-              </span>
-            )}
-            {saveError && (
-              <span className="text-[11px] text-red-400 font-medium flex items-center gap-1 bg-red-500/10 px-2 py-1 rounded border border-red-500/20">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {saveError}
-              </span>
-            )}
             
             {/* Language Toggle */}
             <button
@@ -410,18 +322,6 @@ export default function App() {
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            <button
-              onClick={() => handleSaveState()}
-              disabled={isSaving}
-              className={`flex items-center gap-1.5 px-3 py-1.5 border disabled:opacity-50 text-xs font-semibold rounded-lg transition-all shadow-sm cursor-pointer ${
-                theme === 'dark'
-                  ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
-                  : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-800'
-              }`}
-            >
-              <Save className="w-3.5 h-3.5 text-amber-500" />
-              {isSaving ? t('app.saving') : t('app.saveState')}
-            </button>
           </div>
         </div>
       </header>
