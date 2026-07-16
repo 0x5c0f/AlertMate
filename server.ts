@@ -10,21 +10,13 @@ import { createServer as createViteServer } from "vite";
 import YAML from "yaml";
 import { GoogleGenAI } from "@google/genai";
 import jwt from "jsonwebtoken";
+import { timingSafeEqual } from "crypto";
 import { AlertmanagerState, AlertmanagerConfig, Silence, Route, Receiver } from "./src/types.js";
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "50mb" }));
-
-// Persistent Storage Location
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "alertmanager_config_v2.json");
-
-// Ensure Data Directory Exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+app.use(express.json({ limit: "1mb" }));
 
 // Helper to clean up internal Route objects to match official Alertmanager YAML structure
 function cleanRouteForYaml(route: Route): any {
@@ -88,18 +80,7 @@ function buildAlertmanagerYaml(config: AlertmanagerConfig): string {
   const yamlObj: any = {};
   
   if (config.global) {
-    // Only include non-empty properties
-    const globalObj: any = {};
-    if (config.global.resolve_timeout) globalObj.resolve_timeout = config.global.resolve_timeout;
-    if (config.global.smtp_smarthost) globalObj.smtp_smarthost = config.global.smtp_smarthost;
-    if (config.global.smtp_from) globalObj.smtp_from = config.global.smtp_from;
-    if (config.global.smtp_auth_username) globalObj.smtp_auth_username = config.global.smtp_auth_username;
-    if (config.global.smtp_auth_password) globalObj.smtp_auth_password = config.global.smtp_auth_password;
-    if (config.global.slack_api_url) globalObj.slack_api_url = config.global.slack_api_url;
-    
-    if (Object.keys(globalObj).length > 0) {
-      yamlObj.global = globalObj;
-    }
+    yamlObj.global = { ...config.global };
   }
   
   // Parse route tree
@@ -158,7 +139,13 @@ const DEFAULT_STATE: AlertmanagerState = {
 
 // Auth Configuration
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
-const JWT_SECRET = process.env.JWT_SECRET || (ADMIN_PASSWORD ? `am-configurer-${ADMIN_PASSWORD}` : "change-me");
+if (ADMIN_PASSWORD) {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+    console.error("[Alertmanager Configurer] FATAL: JWT_SECRET must be set to a strong random value (min 16 chars) when ADMIN_PASSWORD is configured.");
+    process.exit(1);
+  }
+}
+const JWT_SECRET = process.env.JWT_SECRET || "";
 const AUTH_ENABLED = !!ADMIN_PASSWORD;
 
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -168,6 +155,28 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   try { jwt.verify(header.slice(7), JWT_SECRET); next(); }
   catch { res.status(401).json({ error: "Invalid or expired token" }); }
 }
+
+// API: Auth status
+app.get("/api/auth/status", (req, res) => {
+  let authenticated = !AUTH_ENABLED;
+  if (AUTH_ENABLED) {
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) {
+      try { jwt.verify(header.slice(7), JWT_SECRET); authenticated = true; } catch {}
+    }
+  }
+  res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { password } = req.body;
+  if (!AUTH_ENABLED) return res.json({ token: "", message: "Auth not configured" });
+  const a = Buffer.from(password || ""), b = Buffer.from(ADMIN_PASSWORD);
+  if (a.length !== b.length || !timingSafeEqual(a, b))
+    return res.status(401).json({ error: "Invalid password" });
+  const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
+  res.json({ token });
+});
 
 // AI Provider Configuration (from environment variables)
 // AI Copilot — set AI_ENABLED=true to activate
@@ -202,63 +211,24 @@ function getGeminiClient(): GoogleGenAI {
   return geminiClient;
 }
 
-// Load configurations from local disk
-function loadState(): AlertmanagerState {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const content = fs.readFileSync(DATA_FILE, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch (err) {
-    console.error("Error loading config state from disk, using defaults:", err);
-  }
-  return DEFAULT_STATE;
-}
-
-// Save configuration to disk
-function saveState(state: AlertmanagerState) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error saving config state to disk:", err);
-  }
-}
-
-
-// API: Auth status
-app.get("/api/auth/status", (req, res) => {
-  let authenticated = !AUTH_ENABLED;
-  if (AUTH_ENABLED) {
-    const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ")) {
-      try { jwt.verify(header.slice(7), JWT_SECRET); authenticated = true; } catch {}
-    }
-  }
-  res.json({ authEnabled: AUTH_ENABLED, authenticated, aiEnabled: AI_ENABLED });
-});
-
-app.post("/api/auth/login", (req, res) => {
-  const { password } = req.body;
-  if (!AUTH_ENABLED) return res.json({ token: "", message: "Auth not configured" });
-  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: "Invalid password" });
-  const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
-  res.json({ token });
-});
-
-// API: Get Current Config State
+// API: Get Current Config State (read-only, no server-side persistence)
 app.get("/api/config", (req, res) => {
-  const state = loadState();
-  res.json(state);
-});
-
-// API: Save Config State
-app.post("/api/config", (req, res) => {
-  const newState = req.body as AlertmanagerState;
-  if (!newState || !newState.config) {
-    return res.status(400).json({ error: "Invalid payload: config is required" });
-  }
-  saveState(newState);
-  res.json({ success: true, message: "Configuration saved successfully" });
+  if (AUTH_ENABLED) {
+    const clean = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    if (clean.config?.global) {
+      clean.config.global.smtp_auth_password = '';
+      clean.config.global.slack_api_url = '';
+    }
+    if (clean.config?.receivers) clean.config.receivers.forEach((r: any) => {
+      if (r.wechat_configs) r.wechat_configs = r.wechat_configs.map((w: any) => ({ ...w, api_secret: '' }));
+      if (r.email_configs) r.email_configs = r.email_configs.map((e: any) => ({ ...e, auth_password: '' }));
+      if (r.dingtalk_configs) r.dingtalk_configs = r.dingtalk_configs.map((d: any) => ({ ...d, secret: '' }));
+      if (r.slack_configs) r.slack_configs = r.slack_configs.map((s: any) => ({ ...s, api_url: '' }));
+      if (r.webhook_configs) r.webhook_configs = r.webhook_configs.map((w: any) => ({ ...w, url: '' }));
+      if (r.pagerduty_configs) r.pagerduty_configs = r.pagerduty_configs.map((p: any) => ({ ...p, routing_key: '', service_key: '' }));
+    });
+    res.json(clean);
+  } else { res.json(DEFAULT_STATE); }
 });
 
 // API: Validate Alertmanager YAML Configuration
@@ -456,10 +426,7 @@ function convertAmConfigToInternal(rawConfig: any): AlertmanagerConfig {
 
 // API: Pull config from a running Alertmanager instance
 app.post("/api/pull-config", async (req, res) => {
-  const { targetUrl } = req.body;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "targetUrl is required" });
-  }
+  const targetUrl = req.body?.targetUrl || process.env.ALERTMANAGER_URL || "http://localhost:9093";
 
   const statusUrl = `${targetUrl.replace(/\/$/, "")}/api/v2/status`;
 
@@ -509,10 +476,7 @@ app.post("/api/pull-config", async (req, res) => {
 
 // API: Reload Configuration via Proxy POST /-/reload
 app.post("/api/reload", authMiddleware, async (req, res) => {
-  const { targetUrl } = req.body;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "targetUrl is required" });
-  }
+  const targetUrl = req.body?.targetUrl || process.env.ALERTMANAGER_URL || "http://localhost:9093";
 
   const reloadUrl = `${targetUrl.replace(/\/$/, "")}/-/reload`;
   console.log(`Proxying Alertmanager configuration reload to: ${reloadUrl}`);
@@ -553,9 +517,6 @@ app.post("/api/reload", authMiddleware, async (req, res) => {
     });
   }
 });
-
-// TARGET_URL for remote proxy
-const TARGET_URL = process.env.ALERTMANAGER_URL || "http://localhost:9093";
 
 async function proxyToAlertmanager(req: express.Request, res: express.Response, amPath: string) {
   const targetUrl = req.body?.targetUrl || req.query.targetUrl as string || process.env.ALERTMANAGER_URL || "http://localhost:9093";
@@ -660,7 +621,7 @@ ${JSON.stringify(currentConfig || {}, null, 2)}`;
       if (!content) {
         return res.status(502).json({ error: "AI API returned empty response" });
       }
-      result = JSON.parse(content);
+      try { result = JSON.parse(content); } catch { return res.status(502).json({ error: "AI returned non-JSON response" }); }
     } else {
       // Use built-in Gemini
       const ai = getGeminiClient();
@@ -674,7 +635,7 @@ ${JSON.stringify(currentConfig || {}, null, 2)}`;
         }
       });
       const text = response.text;
-      result = JSON.parse(text || "{}");
+      try { result = JSON.parse(text || "{}"); } catch { result = { explanation: "AI returned non-JSON response", suggestedConfig: {} }; }
     }
 
     res.json(result);
