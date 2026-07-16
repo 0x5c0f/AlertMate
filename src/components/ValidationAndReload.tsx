@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertmanagerConfig } from '../types';
 import { Terminal, Download, RefreshCw, CheckCircle, AlertTriangle, FileCode, Play, Globe, ExternalLink, HelpCircle } from 'lucide-react';
 
@@ -10,6 +11,7 @@ interface ValidationAndReloadProps {
 }
 
 export default function ValidationAndReload({ config, targetUrl, onTargetUrlChange }: ValidationAndReloadProps) {
+  const { t } = useTranslation();
   const [isValidating, setIsValidating] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
   
@@ -46,7 +48,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
         yaml: '',
         errors: [err.message || 'Validation request failed'],
         warnings: [],
-        output: `FAILED: Network Error calling validation service:\n  ✖ ${err.message}`
+        output: `${t('deploy.networkError')}\n  ✖ ${err.message}`
       });
     } finally {
       setIsValidating(false);
@@ -77,7 +79,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
     } catch (err: any) {
       setReloadLog({
         success: false,
-        message: `Network failure connecting to Configurer reloading proxy: ${err.message || 'Unknown error'}`,
+        message: `${t('deploy.reloadNetworkError')} ${err.message || 'Unknown error'}`,
         timestamp: new Date().toLocaleTimeString()
       });
     } finally {
@@ -105,18 +107,18 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
         <div className="text-xs font-bold text-gray-800 uppercase tracking-wider pb-2 border-b border-gray-100 flex items-center gap-1.5">
           <Globe className="w-4 h-4 text-blue-500" />
-          Target Alertmanager Cluster Endpoint
+          {t('deploy.title')}
         </div>
 
         <div className="flex flex-col md:flex-row items-center gap-4">
           <div className="flex-1 w-full">
             <label className="block text-[11px] font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
-              Alertmanager Base URL
-              <HelpCircle className="w-3.5 h-3.5 text-gray-400" title="The URL of your running Alertmanager instance. The application proxies reload notifications to this URL." />
+              {t('deploy.urlLabel')}
+              <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('deploy.urlTooltip')} />
             </label>
             <div className="flex rounded-lg border border-gray-300 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
               <span className="bg-gray-50 border-r border-gray-300 text-gray-500 text-xs px-3 flex items-center justify-center font-mono">
-                URL
+                {t('deploy.urlPrefix')}
               </span>
               <input
                 type="text"
@@ -127,7 +129,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
               />
             </div>
             <span className="text-[10px] text-gray-400 mt-1 block">
-              Default standard is `http://localhost:9093`. For remote servers, ensure reload lifecycle is enabled using `--web.enable-lifecycle`.
+              {t('deploy.urlPlaceholder')}
             </span>
           </div>
 
@@ -138,7 +140,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
               className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 text-xs font-bold rounded-lg border border-gray-300 transition-all shadow-sm"
             >
               <Download className="w-4 h-4" />
-              Download alertmanager.yml
+              {t('deploy.download')}
             </button>
             <button
               onClick={handleReloadConfig}
@@ -150,7 +152,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
               ) : (
                 <Play className="w-4 h-4" />
               )}
-              Trigger /-/reload Hot Reload
+              {t('deploy.reload')}
             </button>
           </div>
         </div>
@@ -171,7 +173,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
             )}
             <div className="space-y-1">
               <div className="font-bold flex items-center gap-2">
-                <span>{reloadLog.success ? 'Configuration Hot-Reload Succeeded' : 'Configuration Hot-Reload Failed'}</span>
+                <span>{reloadLog.success ? t('deploy.reloadSuccess') : t('deploy.reloadFailed')}</span>
                 <span className="text-[10px] font-normal text-gray-400 font-mono">[{reloadLog.timestamp}]</span>
               </div>
               <p className="font-mono text-[11px] leading-tight select-all">{reloadLog.message}</p>
@@ -199,18 +201,18 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
 
           {/* Terminal content */}
           <div className="flex-1 p-4 overflow-auto text-xs leading-relaxed space-y-2 select-text">
-            <div className="text-gray-500">$ amtool check-config /tmp/alertmanager.yml</div>
+            <div className="text-gray-500">{t('deploy.commandLine')}</div>
             {isValidating ? (
               <div className="text-blue-400 flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                Executing static validation rules...
+                {t('deploy.validating')}
               </div>
             ) : validationResult ? (
               <pre className="whitespace-pre-wrap leading-tight text-gray-200">
                 {validationResult.output}
               </pre>
             ) : (
-              <div className="text-gray-500 italic">Terminal idle. Waiting for configuration updates...</div>
+              <div className="text-gray-500 italic">{t('deploy.terminalIdle')}</div>
             )}
           </div>
         </div>
@@ -221,21 +223,21 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
           <div className="p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0">
             <span className="text-[10px] text-gray-500 flex items-center gap-1.5 uppercase font-bold tracking-wider">
               <FileCode className="w-3.5 h-3.5 text-orange-500" />
-              Generated alertmanager.yml preview
+              {t('deploy.yamlPreview')}
             </span>
             <span className="bg-orange-50 text-orange-700 border border-orange-100 rounded px-1.5 py-0.2 text-[9px] font-bold font-mono">
-              YAML
+              {t('deploy.yamlTab')}
             </span>
           </div>
 
           {/* Code preview block */}
           <div className="flex-1 p-4 overflow-auto bg-gray-50 text-xs font-mono text-gray-800 leading-tight border-none outline-none select-all whitespace-pre">
             {isValidating ? (
-              <div className="text-gray-400 italic">Compiling YAML file...</div>
+              <div className="text-gray-400 italic">{t('deploy.compiling')}</div>
             ) : validationResult && validationResult.yaml ? (
               <code>{validationResult.yaml}</code>
             ) : (
-              <div className="text-gray-400 italic">No valid YAML compiled yet. Try reviewing your components.</div>
+              <div className="text-gray-400 italic">{t('deploy.noYaml')}</div>
             )}
           </div>
         </div>

@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertmanagerConfig, Receiver, Route, InhibitRule } from '../types';
 import { Sparkles, ArrowRight, CheckCircle2, AlertTriangle, RefreshCw, MessageSquare, List, Play, Compass } from 'lucide-react';
 
@@ -13,6 +14,7 @@ interface AiCopilotProps {
 }
 
 export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopilotProps) {
+  const { t } = useTranslation();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,19 +39,19 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
 
   const samplePrompts = [
     {
-      title: "Dev vs Prod Separation",
+      title: t('copilot.templates.devProd'),
       text: "Separated routes: warnings go to dingtalk-dev-warnings; production criticals go to wechat-ops-critical with continue enabled, then filter db-dba-sms for database services."
     },
     {
-      title: "PagerDuty Escalation Hierarchy",
+      title: t('copilot.templates.pagerduty'),
       text: "Configure Slack alerts for standard notifications, and add a PagerDuty escalation trigger on critical alerts. Match serverity=\"critical\"."
     },
     {
-      title: "Advanced Inhibit Rules Layout",
+      title: t('copilot.templates.inhibitRules'),
       text: "Add an inhibit rule to suppress all CPU and Disk alerts on nodes where NodeDown or ClusterManagerDown is active, matched by the instance tag."
     },
     {
-      title: "Clean standard multi-channel receivers",
+      title: t('copilot.templates.standardReceivers'),
       text: "Create receivers for Security-Team, Ops-Core, and Database-Oncall. Configure appropriate webhook and email destination structures."
     }
   ];
@@ -104,17 +106,17 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
         <div className="space-y-4">
           <div className="text-xs font-bold text-gray-800 uppercase tracking-wider pb-2 border-b border-gray-100 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-purple-500" />
-            AI Operations Copilot Advisor
+            {t('copilot.title')}
           </div>
           
           <p className="text-xs text-gray-500 leading-relaxed">
-            Prompt Gemini with architectural rules or notification demands to construct or repair Alertmanager trees and receivers automatically.
+            {t('copilot.promptPlaceholder')}
           </p>
 
           {/* Model Configuration Selector */}
           <div className="p-3.5 bg-gray-50/50 rounded-lg border border-gray-100 space-y-2.5">
             <label className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">
-              🤖 Copilot Model Selection
+              🤖 {t('copilot.modelSelection')}
             </label>
             <div className="flex gap-2">
               <select
@@ -125,10 +127,10 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
                 }}
                 className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white"
               >
-                <option value="gemini-3.5-flash">Gemini 3.5 Flash (Default)</option>
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                <option value="custom">Custom Model ID...</option>
+                <option value="gemini-3.5-flash">{t('copilot.models.gemini3flash')}</option>
+                <option value="gemini-2.5-flash">{t('copilot.models.gemini2flash')}</option>
+                <option value="gemini-2.5-pro">{t('copilot.models.gemini2pro')}</option>
+                <option value="custom">{t('copilot.models.custom')}</option>
               </select>
             </div>
             {selectedModel === 'custom' && (
@@ -148,7 +150,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
           {/* Quick suggestions templates */}
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              <Compass className="w-3.5 h-3.5" /> Quick Template Scenarios
+              <Compass className="w-3.5 h-3.5" /> {t('copilot.quickTemplates')}
             </span>
             <div className="grid grid-cols-1 gap-2">
               {samplePrompts.map((p, idx) => (
@@ -186,12 +188,12 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
             {isLoading ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                Analyzing with Gemini...
+                {t('copilot.analyzing')}
               </>
             ) : (
               <>
                 <Sparkles className="w-3.5 h-3.5" />
-                Generate Visual Config Proposal
+                {t('copilot.generate')}
               </>
             )}
           </button>
@@ -204,22 +206,22 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
           <div className="flex-1 flex flex-col items-center justify-center space-y-4">
             <RefreshCw className="w-10 h-10 text-purple-500 animate-spin" />
             <div className="text-center space-y-1">
-              <span className="text-xs font-semibold text-gray-700 block">SRE Advisor is Thinking...</span>
-              <span className="text-[10px] text-gray-400 block max-w-xs">Generating route trees, matching filters, and compiling integration configurations. Please wait.</span>
+              <span className="text-xs font-semibold text-gray-700 block">{t('copilot.thinking')}</span>
+              <span className="text-[10px] text-gray-400 block max-w-xs">{t('copilot.thinkingHint')}</span>
             </div>
           </div>
         ) : error ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3">
             <AlertTriangle className="w-12 h-12 text-amber-500" />
             <div className="space-y-1">
-              <span className="text-sm font-bold text-gray-800 block">Failed to Generate Proposal</span>
+              <span className="text-sm font-bold text-gray-800 block">{t('copilot.failed')}</span>
               <p className="text-xs text-gray-500 max-w-sm">{error}</p>
             </div>
             <button
               onClick={() => handleAskAi()}
               className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-xs text-gray-600 font-semibold rounded-lg transition-all"
             >
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         ) : suggestion ? (
@@ -227,7 +229,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
             {/* Header / Explanation */}
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100 shrink-0">
               <span className="text-xs font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-green-500" /> Suggested Architecture Ready
+                <CheckCircle2 className="w-4 h-4 text-green-500" /> {t('copilot.suggestedArchitecture')}
               </span>
               <button
                 onClick={handleApply}
@@ -238,7 +240,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
                     : 'bg-purple-600 hover:bg-purple-700 text-white'
                 }`}
               >
-                {applied ? 'Applied successfully ✓' : 'Apply AI Suggestions'}
+                {applied ? t('copilot.applied') : t('copilot.apply')}
               </button>
             </div>
 
@@ -247,7 +249,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
               {/* Explanation block */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
-                  AI Design Explanations
+                  {t('copilot.designExplanations')}
                 </span>
                 <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
                   {suggestion.explanation}
@@ -257,12 +259,12 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
               {/* Proposed items highlights */}
               <div className="space-y-3">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                  Proposal Structure Highlights
+                  {t('copilot.proposalHighlights')}
                 </span>
                 
                 {suggestion.suggestedConfig.receivers && (
                   <div className="border border-gray-100 rounded-lg p-3 space-y-2">
-                    <span className="text-[11px] font-bold text-gray-600 block">Proposed Receivers ({suggestion.suggestedConfig.receivers.length})</span>
+                    <span className="text-[11px] font-bold text-gray-600 block">{t('copilot.proposedReceivers', { count: suggestion.suggestedConfig.receivers.length })}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {suggestion.suggestedConfig.receivers.map((r, i) => (
                         <span key={i} className="bg-purple-50 text-purple-700 border border-purple-100 rounded px-2 py-0.5 text-[10px] font-medium font-mono">
@@ -275,7 +277,7 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
 
                 {suggestion.suggestedConfig.route && (
                   <div className="border border-gray-100 rounded-lg p-3 space-y-2">
-                    <span className="text-[11px] font-bold text-gray-600 block">Proposed Route Branches</span>
+                    <span className="text-[11px] font-bold text-gray-600 block">{t('copilot.proposedRoutes')}</span>
                     <div className="text-[11px] text-gray-500 leading-normal font-mono bg-gray-50 p-2.5 rounded border border-gray-200 max-h-[160px] overflow-y-auto">
                       <pre className="whitespace-pre-wrap">
                         {JSON.stringify(suggestion.suggestedConfig.route, null, 2)}
@@ -289,8 +291,8 @@ export default function AiCopilot({ currentConfig, onApplySuggestions }: AiCopil
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-gray-400">
             <Sparkles className="w-12 h-12 mb-2 text-purple-200" />
-            <span className="text-sm font-semibold text-gray-700">Copilot Advisor Standby</span>
-            <span className="text-xs text-gray-400 max-w-sm mt-1">Select a scenario or type custom rules in the left panel to trigger operations planning.</span>
+            <span className="text-sm font-semibold text-gray-700">{t('copilot.standby')}</span>
+            <span className="text-xs text-gray-400 max-w-sm mt-1">{t('copilot.standbyHint')}</span>
           </div>
         )}
       </div>
