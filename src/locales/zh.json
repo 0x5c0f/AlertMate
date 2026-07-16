@@ -272,5 +272,30 @@
       "inhibitRules": "高级抑制规则布局",
       "standardReceivers": "标准多渠道接收器"
     }
+  },
+  "remote": {
+    "alerts": "告警",
+    "silences": "静默",
+    "status": "状态",
+    "loading": "加载中...",
+    "activeAlerts": "{{count}} 条活跃告警",
+    "silenceCount": "{{count}} 条静默",
+    "refresh": "刷新",
+    "newSilence": "新建静默",
+    "failedFetch": "获取失败",
+    "networkError": "网络错误",
+    "noAlerts": "无活跃告警",
+    "noSilences": "无活跃静默",
+    "noStatus": "无状态数据",
+    "clusterStatus": "集群状态",
+    "version": "版本",
+    "uptime": "运行时间",
+    "expire": "过期",
+    "createdBy": "创建者",
+    "comment": "备注",
+    "createSilence": "创建静默",
+    "creating": "创建中...",
+    "addMatcher": "+ 添加匹配器",
+    "since": "自"
   }
 }

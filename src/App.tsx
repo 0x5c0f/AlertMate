@@ -50,6 +50,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [alertCount, setAlertCount] = useState<number | null>(null);
 
   // Sync activeTab with localStorage
   useEffect(() => {
@@ -95,6 +96,19 @@ export default function App() {
       })
       .catch(() => {});
   };
+
+  // Fetch alert count when authenticated and state is loaded
+  useEffect(() => {
+    if (authenticated && state) {
+      const url = state.targetAlertmanagerUrl?.replace(/\/$/, '') || 'http://localhost:9093';
+      fetch(`${url}/api/v2/alerts`)
+        .then(r => r.json())
+        .then(alerts => setAlertCount(Array.isArray(alerts) ? alerts.length : null))
+        .catch(() => setAlertCount(null));
+    } else {
+      setAlertCount(null);
+    }
+  }, [authenticated, state?.targetAlertmanagerUrl]);
 
   const handleLogin = async () => {
     setLoginLoading(true);
@@ -314,6 +328,12 @@ export default function App() {
               <span className="w-2 h-2 bg-amber-500 rounded-full" />
               <span>{t('app.routes')}: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{totalRoutes}</strong></span>
             </div>
+            {alertCount !== null && (
+            <div className={`flex items-center gap-1.5 pr-3 border-r ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span>Alerts: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{alertCount}</strong></span>
+            </div>
+            )}
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
               <span>{t('app.activeSilences')}: <strong className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{activeSilencesCount}</strong></span>
@@ -449,21 +469,6 @@ export default function App() {
             <ShieldAlert className="w-4 h-4" />
             🚫 {t('app.tabs.inhibitRules')}
           </button>
-          {authenticated && (
-          <button
-            onClick={() => setActiveTab('silences')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'silences'
-                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20 shadow-sm'
-                : theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent'
-            }`}
-          >
-            <VolumeX className="w-4 h-4" />
-            🔕 {t('app.tabs.silences')}
-          </button>
-          )}
           <button
             onClick={() => setActiveTab('deploy')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -530,13 +535,6 @@ export default function App() {
             <InhibitRuleManager
               inhibitRules={state.config.inhibit_rules || []}
               onChange={handleInhibitRulesChange}
-            />
-          )}
-
-          {activeTab === 'silences' && authenticated && (
-            <SilenceManager
-              silences={state.silences}
-              onChange={handleSilencesChange}
             />
           )}
 
