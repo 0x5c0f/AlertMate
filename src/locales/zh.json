@@ -37,7 +37,7 @@
     "themeSwitchDark": "切换至亮色主题",
     "themeSwitchLight": "切换至暗色主题",
     "langSwitch": "切换语言",
-    "footer": "Alertmanager Configurer v2.1.0 • 基于 Prometheus SRE 最佳实践构建",
+    "footer": "AlertMate v2.1.0 • 基于 Prometheus SRE 最佳实践构建",
     "tabs": {
       "receivers": "接收器",
       "routingTree": "路由树",

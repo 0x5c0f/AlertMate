@@ -1,7 +1,9 @@
 {
-  "name": "react-example",
-  "private": true,
+  "name": "alertmate",
   "version": "0.0.0",
+  "private": true,
+  "description": "Visual Alertmanager management console — edit configs, monitor alerts, manage silences, with optional AI Copilot.",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
