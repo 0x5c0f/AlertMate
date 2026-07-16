@@ -2,18 +2,21 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertmanagerConfig } from '../types';
-import { Terminal, Download, RefreshCw, CheckCircle, AlertTriangle, FileCode, Play, Globe, ExternalLink, HelpCircle } from 'lucide-react';
+import { Terminal, Download, RefreshCw, CheckCircle, AlertTriangle, FileCode, Play, Globe, ExternalLink, HelpCircle, DownloadCloud } from 'lucide-react';
 
 interface ValidationAndReloadProps {
   config: AlertmanagerConfig;
   targetUrl: string;
   onTargetUrlChange: (url: string) => void;
+  onPullConfig: (config: AlertmanagerConfig) => void;
 }
 
-export default function ValidationAndReload({ config, targetUrl, onTargetUrlChange }: ValidationAndReloadProps) {
+export default function ValidationAndReload({ config, targetUrl, onTargetUrlChange, onPullConfig }: ValidationAndReloadProps) {
   const { t } = useTranslation();
   const [isValidating, setIsValidating] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
   
   // Validation API result state
   const [validationResult, setValidationResult] = useState<{
@@ -30,6 +33,30 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
     message: string;
     timestamp: string;
   } | null>(null);
+
+  // Function to pull config from Alertmanager
+  const handlePullConfig = async () => {
+    if (!targetUrl.trim()) return;
+    setIsPulling(true);
+    setPullError(null);
+    try {
+      const res = await fetch('/api/pull-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl })
+      });
+      const data = await res.json();
+      if (data.success && data.config) {
+        onPullConfig(data.config);
+      } else {
+        setPullError(data.error || 'Unknown error pulling configuration.');
+      }
+    } catch (err: any) {
+      setPullError(err.message || 'Network error pulling configuration.');
+    } finally {
+      setIsPulling(false);
+    }
+  };
 
   // Function to call `/api/validate`
   const handleValidateConfig = async () => {
@@ -110,34 +137,39 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
           {t('deploy.title')}
         </div>
 
-        <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="flex-1 w-full">
-            <label className="block text-[11px] font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
-              {t('deploy.urlLabel')}
-              <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('deploy.urlTooltip')} />
-            </label>
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
-              <span className="bg-gray-50 border-r border-gray-300 text-gray-500 text-xs px-3 flex items-center justify-center font-mono">
-                {t('deploy.urlPrefix')}
-              </span>
-              <input
-                type="text"
-                value={targetUrl}
-                onChange={(e) => onTargetUrlChange(e.target.value)}
-                placeholder="http://localhost:9093"
-                className="w-full text-xs p-2.5 outline-none bg-white font-mono"
-              />
-            </div>
-            <span className="text-[10px] text-gray-400 mt-1 block">
-              {t('deploy.urlPlaceholder')}
+        <label className="block text-[11px] font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
+          {t('deploy.urlLabel')}
+          <HelpCircle className="w-3.5 h-3.5 text-gray-400" title={t('deploy.urlTooltip')} />
+        </label>
+
+        <div className="flex flex-col sm:flex-row items-stretch gap-2">
+          <div className="flex-1 flex rounded-lg border border-gray-300 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+            <span className="bg-gray-50 border-r border-gray-300 text-gray-500 text-xs px-3 flex items-center justify-center font-mono shrink-0">
+              {t('deploy.urlPrefix')}
             </span>
+            <input
+              type="text"
+              value={targetUrl}
+              onChange={(e) => onTargetUrlChange(e.target.value)}
+              placeholder="http://localhost:9093"
+              className="w-full text-xs p-2.5 outline-none bg-white font-mono"
+            />
           </div>
 
-          <div className="flex items-center gap-2 self-stretch md:self-end pt-1 shrink-0 w-full md:w-auto">
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handlePullConfig}
+              disabled={isPulling || !targetUrl.trim()}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 disabled:opacity-50 text-xs font-bold rounded-lg border border-amber-200 transition-all shadow-sm whitespace-nowrap"
+              title="Pull current configuration from the target Alertmanager"
+            >
+              {isPulling ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
+              Pull Config
+            </button>
             <button
               onClick={handleDownloadYaml}
               disabled={!validationResult?.valid}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 text-xs font-bold rounded-lg border border-gray-300 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 text-xs font-bold rounded-lg border border-gray-300 transition-all shadow-sm whitespace-nowrap"
             >
               <Download className="w-4 h-4" />
               {t('deploy.download')}
@@ -145,7 +177,7 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
             <button
               onClick={handleReloadConfig}
               disabled={isReloading || !validationResult?.valid}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-xs font-bold rounded-lg transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-xs font-bold rounded-lg transition-all shadow-sm whitespace-nowrap"
             >
               {isReloading ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -156,6 +188,13 @@ export default function ValidationAndReload({ config, targetUrl, onTargetUrlChan
             </button>
           </div>
         </div>
+
+        <span className="text-[10px] text-gray-400 mt-1 block">
+          {t('deploy.urlPlaceholder')}
+        </span>
+        {pullError && (
+          <span className="text-[10px] text-red-500 mt-1 block">{pullError}</span>
+        )}
 
         {/* Reload Log Output Banner */}
         {reloadLog && (

@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Route, Receiver } from '../types';
-import { Plus, Trash2, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Settings, GitBranch, AlertCircle, RefreshCw, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Settings, GitBranch, AlertCircle, RefreshCw, HelpCircle, X } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface RouteManagerProps {
   route: Route;
@@ -14,6 +15,8 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
   const [selectedRouteId, setSelectedRouteId] = useState<string>('root');
   const [collapsedRoutes, setCollapsedRoutes] = useState<Record<string, boolean>>({});
   const { t } = useTranslation();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   // Flatten helper to easily navigate and find routes by ID
   const findRouteAndParent = (
@@ -97,26 +100,26 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
   const handleDeleteRoute = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (id === 'root') {
-      alert(t('routes.deleteRootWarning'));
+      setAlertMessage(t('routes.deleteRootWarning'));
       return;
     }
 
-    if (confirm(t('routes.deleteConfirm'))) {
-      const deepDelete = (current: Route): Route => {
-        if (current.routes) {
-          const filtered = current.routes.filter(r => r.id !== id);
-          return {
-            ...current,
-            routes: filtered.map(deepDelete),
-          };
-        }
-        return current;
-      };
+    setConfirmDeleteId(id);
+  };
 
-      const newRoot = deepDelete(route);
-      onChange(newRoot);
-      setSelectedRouteId('root');
-    }
+  const handleConfirmDelete = () => {
+    if (!confirmDeleteId) return;
+    const deepDelete = (current: Route): Route => {
+      if (current.routes) {
+        const filtered = current.routes.filter(r => r.id !== confirmDeleteId);
+        return { ...current, routes: filtered.map(deepDelete) };
+      }
+      return current;
+    };
+    const newRoot = deepDelete(route);
+    onChange(newRoot);
+    setSelectedRouteId('root');
+    setConfirmDeleteId(null);
   };
 
   // Move Route Up/Down
@@ -453,6 +456,11 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
   };
 
   const svgLayout = buildSvgLayout(route);
+  // Compute dynamic SVG size from actual node positions, shifted so no negative coords
+  const minY = Math.min(0, ...svgLayout.nodes.map(n => n.y));
+  const offsetY = minY < 0 ? Math.abs(minY) + 20 : 20;
+  const maxX = Math.max(0, ...svgLayout.nodes.map(n => n.x)) + 200;
+  const maxY = Math.max(0, ...svgLayout.nodes.map(n => n.y + offsetY)) + 60;
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-[calc(100vh-180px)] min-h-[500px]">
@@ -485,14 +493,14 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Receiver dropdown */}
+            <div className="space-y-4">
+              {/* Receiver - always shown */}
               <div>
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.targetReceiver')}</label>
                 <select
                   value={activeRoute.receiver}
                   onChange={(e) => handleUpdateActiveRoute({ receiver: e.target.value })}
-                  className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+                  className="w-full md:w-64 text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white"
                 >
                   {receivers.map((r) => (
                     <option key={r.id} value={r.name}>{r.name}</option>
@@ -500,29 +508,66 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                 </select>
               </div>
 
-              {/* Matchers (except root) */}
+              {/* Matchers + Continue (non-root routes) */}
               {activeRoute.id !== 'root' && (
-                <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[11px] font-medium text-gray-600">{t('routes.matchersList')}</label>
-                    <span className="text-[9px] text-gray-400 font-mono">{t('routes.matcherFormat')}</span>
+                <>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.matchersList')}</label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {(activeRoute.matchers || []).map((m, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md text-[11px] font-mono text-blue-800"
+                        >
+                          {m}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...(activeRoute.matchers || [])];
+                              updated.splice(idx, 1);
+                              handleUpdateActiveRoute({ matchers: updated });
+                            }}
+                            className="ml-0.5 p-0.5 rounded hover:bg-blue-200/50 text-blue-400 hover:text-blue-600 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5 max-w-lg">
+                      <input
+                        type="text"
+                        id="new-matcher"
+                        placeholder='severity="critical"'
+                        className="flex-1 text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim();
+                            if (val && !(activeRoute.matchers || []).includes(val)) {
+                              handleUpdateActiveRoute({ matchers: [...(activeRoute.matchers || []), val] });
+                              (e.target as HTMLInputElement).value = '';
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById('new-matcher') as HTMLInputElement;
+                          const val = input?.value?.trim();
+                          if (val && !(activeRoute.matchers || []).includes(val)) {
+                            handleUpdateActiveRoute({ matchers: [...(activeRoute.matchers || []), val] });
+                            input.value = '';
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-1 block">{t('routes.matcherFormat')}</span>
                   </div>
-                  <input
-                    type="text"
-                    value={activeRoute.matchers?.join(', ') || ''}
-                    onChange={(e) => {
-                      const list = e.target.value.split(',').map(m => m.trim()).filter(m => m.length > 0);
-                      handleUpdateActiveRoute({ matchers: list });
-                    }}
-                    placeholder='severity="critical", env="prod"'
-                    className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                  />
-                </div>
-              )}
 
-              {/* Continue flag (except root) */}
-              {activeRoute.id !== 'root' && (
-                <div className="flex items-center pt-5">
                   <label className="inline-flex items-center text-xs text-gray-600 cursor-pointer">
                     <input
                       type="checkbox"
@@ -531,60 +576,104 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                       className="rounded text-blue-600 border-gray-300 focus:ring-blue-500 mr-2"
                     />
                     {t('routes.continueMatching')}
-                    <HelpCircle className="w-3.5 h-3.5 text-gray-400 ml-1 inline" title={t('routes.continueHint')} />
+                    <HelpCircle className="w-3.5 h-3.5 text-gray-400 ml-1" title={t('routes.continueHint')} />
                   </label>
-                </div>
+                </>
               )}
 
-              {/* Root route parameters */}
+              {/* Group By (root only) */}
               {activeRoute.id === 'root' && (
                 <div>
                   <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupBy')}</label>
-                  <input
-                    type="text"
-                    value={activeRoute.group_by?.join(', ') || ''}
-                    onChange={(e) => {
-                      const list = e.target.value.split(',').map(m => m.trim()).filter(m => m.length > 0);
-                      handleUpdateActiveRoute({ group_by: list });
-                    }}
-                    placeholder="alertname, cluster, service"
-                    className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                  />
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {(activeRoute.group_by || []).map((g, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] font-mono text-emerald-800"
+                      >
+                        {g}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...(activeRoute.group_by || [])];
+                            updated.splice(idx, 1);
+                            handleUpdateActiveRoute({ group_by: updated });
+                          }}
+                          className="ml-0.5 p-0.5 rounded hover:bg-emerald-200/50 text-emerald-400 hover:text-emerald-600 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5 max-w-lg">
+                    <input
+                      type="text"
+                      id="new-groupby"
+                      placeholder="alertname"
+                      className="flex-1 text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (val && !(activeRoute.group_by || []).includes(val)) {
+                            handleUpdateActiveRoute({ group_by: [...(activeRoute.group_by || []), val] });
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('new-groupby') as HTMLInputElement;
+                        const val = input?.value?.trim();
+                        if (val && !(activeRoute.group_by || []).includes(val)) {
+                          handleUpdateActiveRoute({ group_by: [...(activeRoute.group_by || []), val] });
+                          input.value = '';
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* Timing parameters */}
-              <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupWait')}</label>
-                <input
-                  type="text"
-                  value={activeRoute.group_wait || ''}
-                  onChange={(e) => handleUpdateActiveRoute({ group_wait: e.target.value })}
-                  placeholder="30s"
-                  className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                />
-              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupWait')}</label>
+                  <input
+                    type="text"
+                    value={activeRoute.group_wait || ''}
+                    onChange={(e) => handleUpdateActiveRoute({ group_wait: e.target.value })}
+                    placeholder="30s"
+                    className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupInterval')}</label>
-                <input
-                  type="text"
-                  value={activeRoute.group_interval || ''}
-                  onChange={(e) => handleUpdateActiveRoute({ group_interval: e.target.value })}
-                  placeholder="5m"
-                  className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.groupInterval')}</label>
+                  <input
+                    type="text"
+                    value={activeRoute.group_interval || ''}
+                    onChange={(e) => handleUpdateActiveRoute({ group_interval: e.target.value })}
+                    placeholder="5m"
+                    className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.repeatInterval')}</label>
-                <input
-                  type="text"
-                  value={activeRoute.repeat_interval || ''}
-                  onChange={(e) => handleUpdateActiveRoute({ repeat_interval: e.target.value })}
-                  placeholder="12h"
-                  className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                />
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">{t('routes.repeatInterval')}</label>
+                  <input
+                    type="text"
+                    value={activeRoute.repeat_interval || ''}
+                    onChange={(e) => handleUpdateActiveRoute({ repeat_interval: e.target.value })}
+                    placeholder="12h"
+                    className="w-full text-xs p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -609,15 +698,15 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
           <div className="flex-1 overflow-auto p-4 flex items-center justify-start min-h-[220px]">
             <svg
               className="mx-auto"
-              width={Math.max(800, svgLayout.nodes.length * 90)}
-              height={400}
-              style={{ minHeight: '340px' }}
+              width={Math.max(800, maxX)}
+              height={Math.max(400, maxY)}
+              style={{ minWidth: '600px', minHeight: '340px' }}
             >
               {/* Render paths */}
               {svgLayout.links.map((link, idx) => {
                 // Bezier calculation
                 const controlX = (link.sourceX + link.targetX) / 2;
-                const pathData = `M ${link.sourceX} ${link.sourceY} C ${controlX} ${link.sourceY}, ${controlX} ${link.targetY}, ${link.targetX} ${link.targetY}`;
+                const pathData = `M ${link.sourceX} ${link.sourceY + offsetY} C ${controlX} ${link.sourceY + offsetY}, ${controlX} ${link.targetY + offsetY}, ${link.targetX} ${link.targetY + offsetY}`;
                 return (
                   <path
                     key={`link-${idx}`}
@@ -636,7 +725,7 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
                 return (
                   <g
                     key={node.id}
-                    transform={`translate(${node.x}, ${node.y - 25})`}
+                    transform={`translate(${node.x}, ${node.y + offsetY - 25})`}
                     onClick={() => setSelectedRouteId(node.id)}
                     className="cursor-pointer select-none group"
                   >
@@ -679,6 +768,8 @@ export default function RouteManager({ route, receivers, onChange }: RouteManage
           </div>
         </div>
       </div>
+      <ConfirmDialog open={!!alertMessage} title={t('common.warning')} message={alertMessage || ''} confirmLabel={t('common.ok')} showCancel={false} variant="warning" onConfirm={() => setAlertMessage(null)} onCancel={() => setAlertMessage(null)} />
+      <ConfirmDialog open={!!confirmDeleteId} title={t('routes.deleteConfirm')} message={t('routes.deleteConfirm')} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" onConfirm={handleConfirmDelete} onCancel={() => setConfirmDeleteId(null)} />
     </div>
   );
 }

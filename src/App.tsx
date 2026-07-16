@@ -30,13 +30,21 @@ import {
 export default function App() {
   const { t, i18n } = useTranslation();
   const [state, setState] = useState<AlertmanagerState | null>(null);
-  const [activeTab, setActiveTab] = useState<'receivers' | 'routes' | 'inhibit' | 'silences' | 'deploy' | 'copilot'>('receivers');
+  const [activeTab, setActiveTab] = useState<'receivers' | 'routes' | 'inhibit' | 'silences' | 'deploy' | 'copilot'>(() => {
+    return (localStorage.getItem('alertmanager-tab') as any) || 'receivers';
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('alertmanager-theme') as 'dark' | 'light') || 'dark';
   });
+  const [aiEnabled, setAiEnabled] = useState(false);
+
+  // Sync activeTab with localStorage
+  useEffect(() => {
+    localStorage.setItem('alertmanager-tab', activeTab);
+  }, [activeTab]);
 
   // Sync theme with document.body and localStorage
   useEffect(() => {
@@ -61,6 +69,7 @@ export default function App() {
       }
     };
     fetchState();
+    fetch('/api/ai/config').then(r => r.json()).then(c => setAiEnabled(c.enabled)).catch(() => {});
   }, []);
 
   // Save state to backend api
@@ -158,6 +167,16 @@ export default function App() {
     };
     setState(newState);
     handleSaveState(newState); // Auto-save on modification!
+  };
+
+  // Pull config from remote Alertmanager and apply
+  const handlePullConfig = (pulledConfig: AlertmanagerConfig) => {
+    const newState = {
+      ...state,
+      config: pulledConfig
+    };
+    setState(newState);
+    handleSaveState(newState);
   };
 
   // AI Copilot Integration handler - bulk updates config components
@@ -373,6 +392,7 @@ export default function App() {
             <FileCheck className="w-4 h-4" />
             ✅ {t('app.tabs.validateDeploy')}
           </button>
+          {aiEnabled && (
           <button
             onClick={() => setActiveTab('copilot')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -386,6 +406,7 @@ export default function App() {
             <Sparkles className="w-4 h-4 text-amber-500" />
             🔮 {t('app.tabs.aiCopilot')}
           </button>
+          )}
         </div>
 
         {/* Dynamic Tab Workspace View */}
@@ -424,10 +445,11 @@ export default function App() {
               config={state.config}
               targetUrl={state.targetAlertmanagerUrl}
               onTargetUrlChange={handleTargetUrlChange}
+              onPullConfig={handlePullConfig}
             />
           )}
 
-          {activeTab === 'copilot' && (
+          {activeTab === 'copilot' && aiEnabled && (
             <AiCopilot
               currentConfig={state.config}
               onApplySuggestions={handleApplyAiSuggestions}
