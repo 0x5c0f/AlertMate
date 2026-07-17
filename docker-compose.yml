@@ -1,0 +1,15 @@
+services:
+  alertmate:
+    image: 0x5c0f/alertmate:latest
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - ALERTMANAGER_URL=http://your-alertmanager:9093
+      # Auth (optional)
+      # - ADMIN_PASSWORD=your-password
+      # - JWT_SECRET=at-least-16-random-chars
+      # AI Copilot (optional)
+      # - AI_ENABLED=true
+      # - AI_API_KEY=your-gemini-key
+    restart: unless-stopped
