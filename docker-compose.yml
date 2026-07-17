@@ -7,8 +7,8 @@ services:
     environment:
       - ALERTMANAGER_URL=http://your-alertmanager:9093
       # Auth (optional)
-      # - ADMIN_PASSWORD=your-password
-      # - JWT_SECRET=at-least-16-random-chars
+      - ADMIN_PASSWORD=your-password
+      - JWT_SECRET=at-least-16-random-chars
       # AI Copilot (optional)
       # - AI_ENABLED=true
       # - AI_API_KEY=your-gemini-key

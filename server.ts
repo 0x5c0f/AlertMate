@@ -158,7 +158,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 
 // API: Auth status
 app.get("/api/auth/status", (req, res) => {
-  let authenticated = !AUTH_ENABLED;
+  let authenticated = false;
   if (AUTH_ENABLED) {
     const header = req.headers.authorization;
     if (header?.startsWith("Bearer ")) {
